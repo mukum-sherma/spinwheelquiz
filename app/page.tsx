@@ -43,7 +43,7 @@ export default function Home() {
 	const [winner, setWinner] = useState<string | null>(null);
 	const [showDialog, setShowDialog] = useState(false);
 	const [nameOrder, setNameOrder] = useState<NameOrder>("shuffle");
-	const [timerDuration, setTimerDuration] = useState(6);
+	const [timerDuration, setTimerDuration] = useState(10);
 	const [backgroundSelection, setBackgroundSelection] =
 		useState<BackgroundChange | null>(null);
 	const [winningSound, setWinningSound] = useState("small-group-applause");
@@ -57,6 +57,8 @@ export default function Home() {
 	const audioBufferRef = useRef<AudioBuffer | null>(null);
 	const audioContextRef = useRef<AudioContext | null>(null);
 	const lastSegmentRef = useRef<number>(-1);
+	// dynamic deceleration extension (ms) used to allow the wheel to keep slowing until speed ~ 0
+	const decelExtensionRef = useRef<number>(0);
 	const drumBufferRef = useRef<AudioBuffer | null>(null);
 	const winningBuffersRef = useRef<Map<string, AudioBuffer>>(new Map());
 	const spinBuffersRef = useRef<Map<string, AudioBuffer>>(new Map());
@@ -684,61 +686,115 @@ export default function Home() {
 		const startTime = Date.now();
 		const startRotation = rotation;
 
+		// Reset any prior dynamic extension for this spin
+		decelExtensionRef.current = 0;
+
 		const animate = () => {
 			const elapsed = Date.now() - startTime;
 
-			let currentRotation;
-			// Fixed 3 seconds for acceleration and deceleration (same as 6-second timer for ALL durations)
-			const accelDuration = 3000; // First 3 seconds
-			const decelDuration = 3000; // Last 3 seconds
-			const constantSpeedDuration = duration - accelDuration - decelDuration;
+			let currentRotation = startRotation;
 
-			// Calculate rotation amounts based on 6-second timer reference
-			// For 6 seconds: totalRotation is split 50% during acceleration, 50% during deceleration
-			// For longer timers: use SAME acceleration/deceleration rotation amounts, add extra in middle
+			// Timings - determine accel/baseDecel/extraSlow from mapping based on timer seconds
+			const clampSeconds = Math.max(2, Math.min(40, Math.round(timerDuration)));
 
-			// Acceleration: 0 to peak speed over 3 seconds (same for all timers)
+			// Mapping definitions (seconds): index corresponds to ranges described in spec
+			const phaseMap = [
+				[1, 1, 1], // 2
+				[1, 2, 1], // 3
+				[2, 2, 2], // 4
+				[2, 3, 2], // 5
+				[2, 4, 2], // 6
+				[3, 4, 3], // 7
+				[3, 4, 3], // 8
+				[3, 4, 3], // 9
+				[3, 5, 4], // 10-14
+				[3, 5, 5], // 15-19
+				[3, 5, 6], // 20-40
+			];
+
+			const getPhaseForSeconds = (s: number) => {
+				if (s <= 2) return phaseMap[0];
+				if (s === 3) return phaseMap[1];
+				if (s === 4) return phaseMap[2];
+				if (s === 5) return phaseMap[3];
+				if (s === 6) return phaseMap[4];
+				if (s === 7) return phaseMap[5];
+				if (s === 8) return phaseMap[6];
+				if (s === 9) return phaseMap[7];
+				if (s >= 10 && s <= 14) return phaseMap[8];
+				if (s >= 15 && s <= 19) return phaseMap[9];
+				return phaseMap[10]; // 20-40
+			};
+
+			const [accelS, baseDecelS, extraSlowS] = getPhaseForSeconds(clampSeconds);
+			const accelDuration = accelS * 1000;
+			const baseDecel = baseDecelS * 1000;
+			const extraSlow = extraSlowS * 1000;
+			const plannedDecel = baseDecel + extraSlow;
+
+			// constant speed uses baseDecel to determine decel start point
+			const constantSpeedDuration = duration - accelDuration - baseDecel;
+
+			// Rotation splits
 			const rotationDuringAccel = totalRotation * 0.5;
-
-			// Deceleration: peak speed to 0 over 3 seconds (same for all timers)
 			const rotationDuringDecel = totalRotation * 0.5;
 
-			// Constant speed: only for timers > 6 seconds, using peak speed from 6-second timer
-			// Peak speed reached at end of acceleration = rotationDuringAccel / (accelDuration / 2)
-			const peakSpeedPerMs = rotationDuringAccel / (accelDuration / 2);
-			const rotationDuringConstant = peakSpeedPerMs * constantSpeedDuration;
+			// Peak speed reference from accel
+			// Slightly increase middle/constant-phase speed so the wheel feels a bit faster
+			// during the constant part of the spin. Tweak multiplier to taste.
+			const middleSpeedMultiplier = 1; // 12% faster in middle phase
+			const peakSpeedPerMs =
+				(rotationDuringAccel / (accelDuration / 2)) * middleSpeedMultiplier;
+			const rotationDuringConstant =
+				peakSpeedPerMs * Math.max(0, constantSpeedDuration);
 
-			// Phase 1: Acceleration (0 to peak speed) - SAME for all timers
+			// Compute phases
 			if (elapsed < accelDuration) {
+				// Acceleration (quadratic ease-in)
 				const t = elapsed / accelDuration;
-				const easeProgress = t * t; // Quadratic ease-in (starts slow, speeds up)
+				const easeProgress = t * t;
 				currentRotation = startRotation + rotationDuringAccel * easeProgress;
-			}
-			// Phase 2: Constant speed (peak speed maintained) - ONLY for timers > 6 seconds
-			else if (
+			} else if (
 				constantSpeedDuration > 0 &&
 				elapsed < accelDuration + constantSpeedDuration
 			) {
+				// Constant speed
 				const constantElapsed = elapsed - accelDuration;
 				currentRotation =
 					startRotation +
 					rotationDuringAccel +
 					peakSpeedPerMs * constantElapsed;
-			}
-			// Phase 3: Deceleration (peak speed to 0) - SAME for all timers
-			else if (elapsed < duration) {
-				const decelElapsed = elapsed - accelDuration - constantSpeedDuration;
-				const t = decelElapsed / decelDuration;
-				const easeProgress = 1 - Math.pow(1 - t, 3); // Cubic ease-out (slows down gradually)
+			} else {
+				// Deceleration phase - allow dynamic extension until angular speed near zero
+				const decelElapsed =
+					elapsed - accelDuration - Math.max(0, constantSpeedDuration);
+				const dynamicDecelTotal = plannedDecel + decelExtensionRef.current;
+				const u = Math.min(Math.max(decelElapsed / dynamicDecelTotal, 0), 1);
+				const easeProgress = 1 - Math.pow(1 - u, 3); // cubic ease-out across full decel
 				const rotationBeforeDecel =
 					rotationDuringAccel + rotationDuringConstant;
 				currentRotation =
 					startRotation +
 					rotationBeforeDecel +
 					rotationDuringDecel * easeProgress;
-			} else {
-				// Animation complete - set final position
-				currentRotation = startRotation + totalRotation;
+
+				// instantaneous angular speed (deg per ms) from derivative of easing
+				const easeDerivWrtU = 3 * Math.pow(1 - u, 2);
+				const angularSpeed =
+					(rotationDuringDecel * easeDerivWrtU) / dynamicDecelTotal;
+
+				// If we've passed the planned decel and angular speed is still above threshold,
+				// extend decel a bit so wheel reaches near-zero smoothly.
+				const speedThreshold = 0.002; // deg per ms (~7.2 deg/s) — small threshold for near-zero
+				const maxExtension = 10000; // ms max extra allowed (safety cap)
+				const extensionStep = 100; // ms per frame
+				if (
+					decelElapsed >= plannedDecel &&
+					angularSpeed > speedThreshold &&
+					decelExtensionRef.current < maxExtension
+				) {
+					decelExtensionRef.current += extensionStep;
+				}
 			}
 
 			setRotation(currentRotation % 360);
@@ -762,7 +818,35 @@ export default function Home() {
 					source.start(0);
 				}
 			}
-			if (elapsed < duration) {
+			// Decide whether to continue animating. We want to run until the wheel
+			// has slowed to near-zero angular speed, even if that goes past the planned timer.
+			const decelStart = accelDuration + Math.max(0, constantSpeedDuration);
+			const decelElapsed = Math.max(0, elapsed - decelStart);
+			const dynamicDecelTotal =
+				baseDecel + extraSlow + decelExtensionRef.current;
+
+			// Compute instantaneous angular speed for current point in decel (deg/ms)
+			let stillRunning = false;
+			if (decelElapsed < dynamicDecelTotal) {
+				stillRunning = true;
+			} else {
+				const u = Math.min(Math.max(decelElapsed / dynamicDecelTotal, 0), 1);
+				const easeDerivWrtU = 3 * Math.pow(1 - u, 2);
+				const rotationDuringDecel = totalRotation * 0.5;
+				const angularSpeed =
+					(rotationDuringDecel * easeDerivWrtU) / dynamicDecelTotal;
+				const speedThreshold = 0.002; // deg/ms (~7.2 deg/s)
+				if (
+					angularSpeed > speedThreshold &&
+					decelExtensionRef.current < 10000
+				) {
+					// extend a bit and continue
+					decelExtensionRef.current += 100;
+					stillRunning = true;
+				}
+			}
+
+			if (stillRunning) {
 				requestAnimationFrame(animate);
 			} else {
 				setSpinning(false);

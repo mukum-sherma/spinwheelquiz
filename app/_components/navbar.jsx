@@ -8,6 +8,7 @@ import React, {
 	useState,
 } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import {
 	Menubar,
 	MenubarMenu,
@@ -53,8 +54,18 @@ const masque = localFont({
 	src: "../_fonts/masque.ttf",
 	variable: "--font-masque",
 });
+const magazine = localFont({
+	src: "../_fonts/magazine.ttf",
+	variable: "--font-magzine",
+});
 
-const timerOptions = Array.from({ length: 25 }, (_, index) => index + 6);
+const adalima = localFont({
+	src: "../_fonts/adalima.ttf",
+	variable: "--font-adalima",
+});
+
+// Timer options from 2s to 40s
+const timerOptions = Array.from({ length: 39 }, (_, index) => index + 2);
 
 const spinAudioFiles = [
 	"alarm-beep-2mp3",
@@ -98,7 +109,7 @@ const Navbar = ({
 	onWinningSoundChange,
 	onSpinSoundChange,
 	currentNameOrder = "shuffle",
-	currentTimer = 6,
+	currentTimer = 10,
 	currentWinningSound = "small-group-applause",
 	currentSpinSound = "single-spin",
 	audioContextRef,
@@ -585,7 +596,23 @@ const Navbar = ({
 					id="banner"
 					className="font-bold text-lg tracking-wide text-orange-950"
 				>
-					SPIN THE NAMES
+					<Link
+						href="/"
+						className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+					>
+						<Image
+							src="/banner.png"
+							alt="SpinWheelQuiz Logo"
+							width={50}
+							height={50}
+							className="object-contain"
+						/>
+						<span
+							className={`uppercase font-medium ${adalima.className} mt-1 text-[20px] tracking-widest text-shadow-[0_0px_1px_rgba(255,255,255,0.4)]`}
+						>
+							SpinWheelQuiz
+						</span>
+					</Link>
 				</section>
 				<section id="menu" className="hidden md:block">
 					{menubarItems}
