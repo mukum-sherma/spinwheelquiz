@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { Textarea } from "@/components/ui/textarea";
+// using native textarea here so we can overlay per-line controls
 import {
 	Dialog,
 	DialogContent,
@@ -62,6 +62,128 @@ export default function Home() {
 	const drumBufferRef = useRef<AudioBuffer | null>(null);
 	const winningBuffersRef = useRef<Map<string, AudioBuffer>>(new Map());
 	const spinBuffersRef = useRef<Map<string, AudioBuffer>>(new Map());
+
+	// textarea controls for per-line delete icon
+	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+	// simple undo history for textarea content
+	const historyRef = useRef<string[]>([names]);
+	const historyIndexRef = useRef<number>(0);
+	const MAX_HISTORY = 200;
+	const [canUndo, setCanUndo] = useState(false);
+	const [focusedLine, setFocusedLine] = useState<number | null>(null);
+	const [showDeleteIcon, setShowDeleteIcon] = useState(false);
+	const [iconTop, setIconTop] = useState<number>(0);
+
+	const calcIconTop = (ta?: HTMLTextAreaElement | null, lineIdx?: number) => {
+		const el = ta ?? textareaRef.current;
+		const idx = lineIdx ?? focusedLine ?? 0;
+		if (!el) return 0;
+		try {
+			const style = window.getComputedStyle(el);
+			let lineHeight = parseFloat(style.lineHeight || "");
+			if (isNaN(lineHeight) || lineHeight === 0) {
+				const fontSize = parseFloat(style.fontSize || "16") || 16;
+				lineHeight = fontSize * 1.2;
+			}
+			const paddingTop = parseFloat(style.paddingTop || "0") || 0;
+			const y = paddingTop + idx * lineHeight - el.scrollTop;
+			const max = el.clientHeight - lineHeight;
+			return Math.max(4, Math.min(max, y));
+		} catch {
+			return 0;
+		}
+	};
+
+	const updateFocusedLine = () => {
+		const el = textareaRef.current;
+		if (!el) {
+			setFocusedLine(null);
+			setShowDeleteIcon(false);
+			return;
+		}
+		const sel = el.selectionStart ?? 0;
+		const idx = el.value.slice(0, sel).split("\n").length - 1;
+		setFocusedLine(idx);
+		const lines = el.value.split("\n");
+		const text = lines[idx] ?? "";
+		const shouldShow = text.trim() !== "" && document.activeElement === el;
+		setShowDeleteIcon(shouldShow);
+		setIconTop(calcIconTop(el, idx));
+	};
+
+	const handleKeyDownInTextarea = () => {
+		// update caret-derived state after the key event
+		setTimeout(updateFocusedLine, 0);
+	};
+
+	const pushHistory = (value: string) => {
+		const h = historyRef.current;
+		let idx = historyIndexRef.current;
+		// if we are not at the end, truncate forward history
+		if (idx < h.length - 1) {
+			h.splice(idx + 1);
+		}
+		h.push(value);
+		idx = h.length - 1;
+		// cap history
+		if (h.length > MAX_HISTORY) {
+			h.shift();
+			idx = h.length - 1;
+		}
+		historyIndexRef.current = idx;
+		setCanUndo(h.length > 1 && historyIndexRef.current > 0);
+	};
+
+	const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+		const v = e.target.value;
+		// push new state into history
+		pushHistory(v);
+		setNames(v);
+		// update caret/hover derived UI
+		setTimeout(updateFocusedLine, 0);
+	};
+
+	const handleUndo = () => {
+		const h = historyRef.current;
+		let idx = historyIndexRef.current;
+		if (idx <= 0) return;
+		idx -= 1;
+		historyIndexRef.current = idx;
+		const prev = h[idx] ?? "";
+		setNames(prev);
+		setCanUndo(historyRef.current.length > 1 && historyIndexRef.current > 0);
+		setTimeout(updateFocusedLine, 0);
+	};
+
+	const handleReset = () => {
+		// push empty state and apply
+		pushHistory("");
+		setNames("");
+		setCanUndo(historyRef.current.length > 1 && historyIndexRef.current > 0);
+		setTimeout(updateFocusedLine, 0);
+	};
+
+	const handleClearFocusedLine = () => {
+		const el = textareaRef.current;
+		if (!el || focusedLine === null) return;
+		const lines = el.value.split("\n");
+		// clear the text of the focused line
+		lines[focusedLine] = "";
+		const newValue = lines.join("\n");
+		setNames(newValue);
+		// compute caret position at start of that line
+		const pos = lines
+			.slice(0, focusedLine)
+			.reduce((acc, l) => acc + l.length + 1, 0);
+		setTimeout(() => {
+			if (textareaRef.current) {
+				textareaRef.current.focus();
+				textareaRef.current.selectionStart = pos;
+				textareaRef.current.selectionEnd = pos;
+				updateFocusedLine();
+			}
+		}, 0);
+	};
 
 	// Initialize Web Audio API for better performance on mobile
 	useEffect(() => {
@@ -1110,15 +1232,57 @@ export default function Home() {
 							<label className="block  mb-2 text-gray-600">
 								Enter names (one per line)
 							</label>
-							<Textarea
-								id="names-input"
-								value={names}
-								onChange={(e) => setNames(e.target.value)}
-								// placeholder="Enter names, one per line"
-								rows={10}
-								className="w-full whitespace-pre min-h-[400px] bg-gray-50 text-gray-800 resize-none text-[18px] md:text-[19px] font-bold border-4 shadow-inner
-   border-gray-300 focus-visible:ring-0 focus-visible:border-blue-300"
-							/>
+							<div className="relative">
+								<textarea
+									id="names-input"
+									ref={(el) => {
+										textareaRef.current = el;
+									}}
+									value={names}
+									onChange={(e) => handleTextareaChange(e)}
+									// placeholder="Enter names, one per line"
+									rows={10}
+									onClick={updateFocusedLine}
+									onKeyUp={updateFocusedLine}
+									onKeyDown={handleKeyDownInTextarea}
+									onSelect={updateFocusedLine}
+									onScroll={() => setIconTop(calcIconTop())}
+									className="w-full whitespace-pre min-h-[400px] rounded-[7px] bg-gray-50 text-gray-800 resize-none text-[18px] md:text-[19px] font-bold border-4 shadow-inner border-gray-300 focus-visible:ring-0 focus-visible:border-blue-300 px-3 pt-3 pb-8"
+								/>
+
+								{/* Delete icon shown inline at right edge of focused line when that line has text */}
+								{showDeleteIcon && (
+									<button
+										type="button"
+										onMouseDown={(e) => e.preventDefault()}
+										onClick={handleClearFocusedLine}
+										aria-label="Clear line"
+										className="absolute right-2 md:right-4 bg-white/90 rounded-full p-1 shadow-md hover:bg-white"
+										style={{ top: iconTop + "px" }}
+									>
+										<X size={16} />
+									</button>
+								)}
+
+								{/* Reset / Undo buttons placed bottom-right inside textarea container */}
+								<div className="absolute right-2 bottom-2 flex gap-2 p-1">
+									<button
+										type="button"
+										onClick={handleReset}
+										className="px-3 py-1 rounded bg-red-500 text-white text-sm hover:bg-red-600 shadow"
+									>
+										Reset
+									</button>
+									<button
+										type="button"
+										onClick={handleUndo}
+										disabled={!canUndo}
+										className="px-3 py-1 rounded bg-gray-200 text-sm hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed shadow"
+									>
+										Undo
+									</button>
+								</div>
+							</div>
 							<p className="text-sm text-gray-500 mt-2">
 								{namesList.length} {namesList.length === 1 ? "name" : "names"}{" "}
 								entered
@@ -1132,11 +1296,11 @@ export default function Home() {
 						<DialogContent
 							className={`${magazine.className} border-2 z-50 flex justify-center py-6  bg-linear-to-r from-yellow-100 via-yellow-200 to-yellow-400`}
 							// Prevent closing when clicking outside/backdrop
-							onPointerDownOutside={(e: any) => {
+							onPointerDownOutside={(e) => {
 								e.preventDefault();
 							}}
 							// Prevent closing with Escape
-							onEscapeKeyDown={(e: any) => {
+							onEscapeKeyDown={(e) => {
 								e.preventDefault();
 							}}
 						>
