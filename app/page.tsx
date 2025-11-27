@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import dynamic from "next/dynamic";
 // using native textarea here so we can overlay per-line controls
 import {
 	Dialog,
@@ -15,6 +16,7 @@ import localFont from "next/font/local";
 
 import { Lexend_Deca } from "next/font/google";
 import { Button } from "@/components/ui/button";
+import { DialogOverlay } from "@radix-ui/react-dialog";
 const lexendDeca = Lexend_Deca({
 	subsets: ["latin"],
 	weight: ["400", "700"],
@@ -42,6 +44,13 @@ export default function Home() {
 	const [rotation, setRotation] = useState(0);
 	const [winner, setWinner] = useState<string | null>(null);
 	const [showDialog, setShowDialog] = useState(false);
+	// Confetti: dynamically import react-confetti (no SSR)
+	const Confetti = useMemo(
+		() => dynamic(() => import("react-confetti"), { ssr: false }),
+		[]
+	);
+	const [windowSize, setWindowSize] = useState({ width: 0, height: 0 });
+	const [showConfetti, setShowConfetti] = useState(false);
 	const [nameOrder, setNameOrder] = useState<NameOrder>("shuffle");
 	const [timerDuration, setTimerDuration] = useState(10);
 	const [backgroundSelection, setBackgroundSelection] =
@@ -378,6 +387,26 @@ export default function Home() {
 			}
 		}
 	}, [showDialog, winningSound]);
+
+	// Manage confetti visibility and window size
+	useEffect(() => {
+		// update size
+		const update = () =>
+			setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+		update();
+		window.addEventListener("resize", update);
+		return () => window.removeEventListener("resize", update);
+	}, []);
+
+	useEffect(() => {
+		if (showDialog) {
+			setShowConfetti(true);
+		} else {
+			// hide confetti when dialog closes
+			setShowConfetti(false);
+		}
+	}, [showDialog]);
+
 	const reorderNames = useCallback((order: NameOrder, source: string) => {
 		const parsed = source
 			.split("\n")
@@ -1013,6 +1042,23 @@ export default function Home() {
 					onClick={(e) => e.stopPropagation()}
 				/>
 			)}
+
+			{/* Confetti - show while winner dialog is open */}
+			{showConfetti && Confetti ? (
+				<Confetti
+					width={
+						windowSize.width ||
+						(typeof window !== "undefined" ? window.innerWidth : 0)
+					}
+					height={
+						windowSize.height ||
+						(typeof window !== "undefined" ? window.innerHeight : 0)
+					}
+					recycle={false}
+					numberOfPieces={350}
+					className="pointer-events-none w-full h-full fixed z-99999"
+				/>
+			) : null}
 			<style jsx>{`
 				@media (min-width: 768px) {
 					#wheel:fullscreen {
@@ -1063,9 +1109,17 @@ export default function Home() {
 					z-index: 99999 !important;
 					max-width: 90vmin !important;
 					width: auto !important;
+					/* Use a subtle 20% black backdrop for fullscreen dialog */
+					background: rgba(0, 0, 0, 0.2) !important;
 				}
 				body.fullscreen-active [data-slot="dialog-overlay"] {
 					z-index: 99998 !important;
+					background: rgba(0, 0, 0, 0.2) !important;
+				}
+
+				/* Non-fullscreen dialog overlay backdrop (20% opacity) */
+				[data-slot="dialog-overlay"] {
+					background: rgba(0, 0, 0, 0.2) !important;
 				}
 			`}</style>
 			{/* <div
@@ -1156,7 +1210,7 @@ export default function Home() {
 							{/* Fullscreen button - only on md+ screens */}
 							<button
 								onClick={toggleFullscreen}
-								className="hidden md:flex items-center gap-2 bg-black/70 hover:bg-black/90 text-white px-3 py-2 rounded-lg transition-all duration-200 shadow-lg"
+								className="hidden md:flex relative z-60 items-center gap-2 bg-black/70 hover:bg-black/90 text-white px-3 py-2 rounded-lg transition-all duration-200 shadow-lg"
 								aria-label={
 									isFullscreen ? "Exit fullscreen" : "Enter fullscreen"
 								}
@@ -1206,10 +1260,27 @@ export default function Home() {
 							<div
 								className={`${
 									showDialog ? "fixed" : "hidden"
-								} left-0 top-0 h-full w-full rounded-[20px] p-4 z-40 justify-center items-center flex`}
+								} left-0 top-0 h-full w-full rounded-[20px] p-4 z-40 justify-center items-center flex bg-black/20`}
 							>
+								{/* Fullscreen confetti sits behind the dialog content but inside the fullscreen element
+								    so it will be visible while the wheel section is in fullscreen. */}
+								{showConfetti && Confetti ? (
+									<Confetti
+										width={
+											windowSize.width ||
+											(typeof window !== "undefined" ? window.innerWidth : 0)
+										}
+										height={
+											windowSize.height ||
+											(typeof window !== "undefined" ? window.innerHeight : 0)
+										}
+										recycle={false}
+										numberOfPieces={350}
+										className="pointer-events-none absolute h-full w-full z-99999"
+									/>
+								) : null}
 								<div
-									className={`${magazine.className} border-2 shadow-lg gap-8 relative rounded-[10px] z-50 px-5 min-w-[600px]  flex flex-col items-center justify-center py-6  bg-linear-to-r from-yellow-100 via-yellow-200 to-yellow-400`}
+									className={`${magazine.className} border-2 shadow-lg gap-8 relative rounded-[10px] px-5 min-w-[600px]  flex flex-col items-center justify-center py-6  bg-linear-to-r from-yellow-100 via-yellow-200 to-yellow-400`}
 								>
 									<div className="">
 										<p
@@ -1300,10 +1371,10 @@ export default function Home() {
 					</section>
 				</main>
 
-				{!isFullscreen && (
+				{/* {!isFullscreen && (
 					<Dialog open={showDialog} onOpenChange={setShowDialog}>
 						<DialogContent
-							className={`${magazine.className} border-2 z-50 flex justify-center py-6  bg-linear-to-r from-yellow-100 via-yellow-200 to-yellow-400`}
+							className={`${magazine.className} border-2 flex justify-center py-6  bg-linear-to-r from-yellow-100 via-yellow-200 to-yellow-400`}
 							// Prevent closing when clicking outside/backdrop
 							onPointerDownOutside={(e) => {
 								e.preventDefault();
@@ -1326,6 +1397,53 @@ export default function Home() {
 							</DialogHeader>
 						</DialogContent>
 					</Dialog>
+				)} */}
+
+				{!isFullscreen && (
+					<div
+						className={`${
+							showDialog ? "fixed" : "hidden"
+						} top-0 left-0 w-full h-full  flex items-center justify-center`}
+					>
+						{/* Backdrop - prevent clicks from closing */}
+						<div
+							className="fixed inset-0 bg-black/30"
+							onMouseDown={(e) => e.preventDefault()}
+						/>
+
+						{/* Dialog container (plain div, accessible) */}
+						<div
+							aria-modal="true"
+							aria-label="Winner dialog"
+							tabIndex={-1}
+							onKeyDown={(e) => {
+								// Prevent closing via Escape (match original behavior)
+								if (e.key === "Escape") e.preventDefault();
+							}}
+							className={`${magazine.className} border-2 shadow-lg gap-8 relative rounded-[10px] z-50 px-5 min-w-[600px] flex flex-col items-center justify-center py-6 bg-linear-to-r from-yellow-100 via-yellow-200 to-yellow-400`}
+						>
+							<div className="">
+								<p
+									className={`text-2xl tracking-widest text-yellow-700 font-extralight px-5`}
+								>
+									🎉 The winner is... 🎉
+								</p>
+								<Button
+									variant="ghost"
+									className="absolute right-0 text-[20px] top-0 p-4 font-bold bg-transparent hover:bg-transparent"
+									onClick={() => setShowDialog(false)}
+									aria-label="Close dialog"
+								>
+									<X size={20} />
+								</Button>
+							</div>
+							<div>
+								<p className="text-4xl tracking-widest text-center text-yellow-900">
+									{winner}
+								</p>
+							</div>
+						</div>
+					</div>
 				)}
 			</div>
 			<div className="shadow-lg md:h-[60px] h-5 border-b-6"></div>
