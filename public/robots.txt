@@ -1,5 +1,6 @@
 # robots.txt for SpinWheelQuiz
-# Replace 'https://your-domain.com' with your production domain before deploying
+# Site: https://www.spinwheelquiz.com
+# Replace or verify this domain before deploying if different
 
 User-agent: *
 Allow: /
@@ -12,5 +13,5 @@ Disallow: /node_modules/
 Crawl-delay: 5
 
 # Preferred sitemap location (update to your production URL)
-Sitemap: https://your-domain.com/sitemap.xml
-Host: https://your-domain.com
+Sitemap: https://www.spinwheelquiz.com/sitemap.xml
+Host: https://www.spinwheelquiz.com
