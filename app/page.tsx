@@ -71,6 +71,9 @@ export default function Home() {
 	const [timerDuration, setTimerDuration] = useState(10);
 	const [backgroundSelection, setBackgroundSelection] =
 		useState<BackgroundChange | null>(null);
+	// Track when a fullpage image is applied to the body and its computed contrast color
+	const [bodyBgIsImage, setBodyBgIsImage] = useState(false);
+	const [bodyContrast, setBodyContrast] = useState<string>("");
 	// When the user selects an image for the wheel, we store its src here
 	const [wheelImageSrc, setWheelImageSrc] = useState<string | null>(null);
 	const [wheelTextColor, setWheelTextColor] = useState<string>("#000");
@@ -108,6 +111,39 @@ export default function Home() {
 			return "#000000";
 		}
 	};
+
+	const getTextContrastStyles = useCallback(():
+		| React.CSSProperties
+		| undefined => {
+		if (!bodyBgIsImage) return undefined;
+		const c = (bodyContrast || "").toLowerCase();
+		const isWhite = c === "#ffffff" || c === "#fff" || c.includes("white");
+		const stroke = isWhite ? "rgba(0,0,0,0.9)" : "rgba(255,255,255,0.95)";
+		const blur = isWhite
+			? "0 3px 8px rgba(0,0,0,0.65)"
+			: "0 3px 8px rgba(255,255,255,0.25)";
+		const outline = `${stroke} -1px -1px 0, ${stroke} 1px -1px 0, ${stroke} -1px 1px 0, ${stroke} 1px 1px 0`;
+		const textShadow = `${outline}, ${blur}`;
+		return {
+			color: bodyContrast || undefined,
+			textShadow,
+		} as React.CSSProperties;
+	}, [bodyBgIsImage, bodyContrast]);
+
+	const getButtonContrastStyles = useCallback(():
+		| React.CSSProperties
+		| undefined => {
+		if (!bodyBgIsImage) return undefined;
+		const c = (bodyContrast || "").toLowerCase();
+		const isWhite = c === "#ffffff" || c === "#fff" || c.includes("white");
+		const stroke = isWhite ? "rgba(0,0,0,0.85)" : "rgba(255,255,255,0.9)";
+		const bg = isWhite ? "rgba(0,0,0,0.18)" : "rgba(255,255,255,0.10)";
+		return {
+			border: `1px solid ${stroke}`,
+			backgroundColor: bg,
+			boxShadow: `0 6px 18px rgba(0,0,0,${isWhite ? 0.38 : 0.06})`,
+		} as React.CSSProperties;
+	}, [bodyBgIsImage, bodyContrast]);
 	const [winningSound, setWinningSound] = useState("small-group-applause");
 	const [spinSound, setSpinSound] = useState("single-spin");
 	const [isFullscreen, setIsFullscreen] = useState(false);
@@ -597,6 +633,8 @@ export default function Home() {
 			document.body.style.backgroundRepeat = "";
 			// reset any page text override
 			document.body.style.color = "";
+			setBodyBgIsImage(false);
+			setBodyContrast("");
 		} else if (backgroundSelection?.type === "image") {
 			// If the selected image is a fullpage image, set the body background.
 			// If it's a wheel image, use it to fill wheel partitions.
@@ -616,6 +654,9 @@ export default function Home() {
 						const bmp = await createImageBitmap(blob);
 						const contrast = computeContrastFromBitmap(bmp);
 						document.body.style.color = contrast;
+						// set state so UI can adapt (text stroke/shadow, button contrast)
+						setBodyBgIsImage(true);
+						setBodyContrast(contrast);
 					} catch (err) {
 						console.warn("Failed to compute contrast for fullpage image:", err);
 					}
@@ -634,6 +675,8 @@ export default function Home() {
 			document.body.style.backgroundSize = "";
 			document.body.style.backgroundPosition = "";
 			document.body.style.backgroundRepeat = "";
+			setBodyBgIsImage(false);
+			setBodyContrast("");
 		}
 	}, [backgroundSelection]);
 
@@ -1368,7 +1411,9 @@ export default function Home() {
 				<main className="flex md:flex-row flex-col gap-1">
 					<section
 						id="wheel"
-						className={`md:w-[70%] relative ${isFullscreen ? "bg-white" : ""}`}
+						className={`md:w-[75%] lg:w-[70%] xl:w-[65%] 2xl:w-[55%] relative ${
+							isFullscreen ? "bg-white" : ""
+						}`}
 						ref={wheelSectionRef}
 					>
 						{/* Title and Fullscreen Header */}
@@ -1409,6 +1454,7 @@ export default function Home() {
 									>
 										<h2
 											className={`wheel-title text-xl md:text-3xl font-bold text-gray-800 `}
+											style={getTextContrastStyles() || undefined}
 										>
 											{wheelTitle}
 										</h2>
@@ -1453,12 +1499,18 @@ export default function Home() {
 							/>
 						</div>
 						{namesList.length === 0 && (
-							<p className="text-center text-gray-500 mt-1">
+							<p
+								className="text-center text-gray-500 mt-1"
+								style={getTextContrastStyles() || undefined}
+							>
 								Add names to the list to spin the wheel
 							</p>
 						)}
 						{!spinning && namesList.length > 0 && (
-							<p className="text-center text-gray-600 mt-1 text-[18px] md:text-[24px] font-bold ">
+							<p
+								className="text-center text-gray-600 mt-1 text-[18px] md:text-[24px] font-bold "
+								style={getTextContrastStyles() || undefined}
+							>
 								Click or Tap the wheel to spin!
 							</p>
 						)}
@@ -1467,6 +1519,7 @@ export default function Home() {
 								className={`text-center ${masque.className} font-bold ${
 									isFullscreen ? "text-blue-400" : "text-blue-900"
 								} tracking-tight text-[18px] md:text-[24px] mt-2`}
+								style={getTextContrastStyles() || undefined}
 							>
 								Spinning . . .
 							</p>
@@ -1525,7 +1578,10 @@ export default function Home() {
 
 					<section id="names-list" className="md:w-[25%] my-2 p-4 font-bold">
 						<div className="w-full">
-							<label className="block  mb-2 text-gray-600">
+							<label
+								className="block  mb-2 text-gray-600"
+								style={getTextContrastStyles() || undefined}
+							>
 								Enter names (one per line)
 							</label>
 							<div className="flex items-start gap-2">
@@ -1594,7 +1650,10 @@ export default function Home() {
 										aria-checked={nameOrder === "shuffle"}
 										onClick={() => handleNamesOrderChange("shuffle")}
 										className="flex items-center gap-2 px-2 py-1 rounded-full text-sm text-white shadow justify-start"
-										style={{ background: "#008cbd" }}
+										style={{
+											background: "#008cbd",
+											...(getButtonContrastStyles() || {}),
+										}}
 										// style={{ background: "#155cff" }}
 									>
 										<Shuffle size={16} />
@@ -1607,7 +1666,10 @@ export default function Home() {
 										aria-checked={nameOrder === "ascending"}
 										onClick={() => handleNamesOrderChange("ascending")}
 										className="flex items-center gap-2 px-2 py-1 rounded-full text-sm text-white shadow justify-start"
-										style={{ background: "#008cbd" }}
+										style={{
+											background: "#008cbd",
+											...(getButtonContrastStyles() || {}),
+										}}
 									>
 										<ArrowUp size={16} />
 										<span>Asc</span>
@@ -1619,7 +1681,10 @@ export default function Home() {
 										aria-checked={nameOrder === "descending"}
 										onClick={() => handleNamesOrderChange("descending")}
 										className="flex items-center gap-2 px-2 py-1 rounded-full text-sm text-white shadow justify-start"
-										style={{ background: "#008cbd" }}
+										style={{
+											background: "#008cbd",
+											...(getButtonContrastStyles() || {}),
+										}}
 									>
 										<ArrowDown size={16} />
 										<span>Dsc</span>
@@ -1632,7 +1697,10 @@ export default function Home() {
 												role="button"
 												aria-label="Image"
 												className="flex items-center gap-2 px-2 py-1 rounded-full text-sm text-white shadow justify-start"
-												style={{ background: "#008cbd" }}
+												style={{
+													background: "#008cbd",
+													...(getButtonContrastStyles() || {}),
+												}}
 											>
 												<LoaderPinwheel size={16} />
 												<span>Image</span>
@@ -1683,7 +1751,10 @@ export default function Home() {
 									</DropdownMenu>
 								</div>
 							</div>
-							<p className="text-sm text-gray-500 mt-2">
+							<p
+								className="text-sm text-gray-500 mt-2"
+								style={getTextContrastStyles() || undefined}
+							>
 								{namesList.length} {namesList.length === 1 ? "name" : "names"}{" "}
 								entered
 							</p>
@@ -1767,7 +1838,7 @@ export default function Home() {
 				)}
 			</div>
 			<div className="shadow-lg md:h-[60px] h-5 border-b-6"></div>
-			<div className="bg-[#fee4c1]/60">
+			<div className="bg-[#fee4c1]">
 				{/* Informational sections: history, description and quick guide placed above footer for SEO */}
 				<section className="container mx-auto max-w-4xl py-10 px-4">
 					<h2 className="text-2xl font-bold text-slate-800 mb-4">
