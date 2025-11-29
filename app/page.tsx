@@ -136,12 +136,11 @@ export default function Home() {
 		if (!bodyBgIsImage) return undefined;
 		const c = (bodyContrast || "").toLowerCase();
 		const isWhite = c === "#ffffff" || c === "#fff" || c.includes("white");
-		const stroke = isWhite ? "rgba(0,0,0,0.85)" : "rgba(255,255,255,0.9)";
-		const bg = isWhite ? "rgba(0,0,0,0.18)" : "rgba(255,255,255,0.10)";
+		const stroke = isWhite ? "rgba(0,0,0,0.95)" : "rgba(255,255,255,0.95)";
+		// Only return stroke (border) and a strong contrasting shadow. Do not change background color.
 		return {
-			border: `1px solid ${stroke}`,
-			backgroundColor: bg,
-			boxShadow: `0 6px 18px rgba(0,0,0,${isWhite ? 0.38 : 0.06})`,
+			border: `2px solid ${stroke}`,
+			boxShadow: `0 8px 28px rgba(0,0,0,${isWhite ? 0.6 : 0.2})`,
 		} as React.CSSProperties;
 	}, [bodyBgIsImage, bodyContrast]);
 	const [winningSound, setWinningSound] = useState("small-group-applause");
@@ -1630,7 +1629,7 @@ export default function Home() {
 											type="button"
 											onClick={handleUndo}
 											disabled={!canUndo}
-											className="px-2 py-1 rounded bg-gray-200 text-sm hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed shadow"
+											className="px-2 py-1 text-gray-50 rounded bg-[#404040] text-sm hover:bg-gray-300 disabled:opacity-30 disabled:cursor-not-allowed shadow"
 										>
 											Undo
 										</button>
