@@ -139,9 +139,9 @@ const Navbar = ({
 	}, [currentSpinSound]);
 
 	useEffect(() => {
-		// Fetch images dynamically from API
+		// Fetch fullpage images dynamically from API
 		setLoadingImages(true);
-		fetch("/api/images")
+		fetch("/api/images/fullpage")
 			.then((res) => res.json())
 			.then((data) => {
 				setImageFiles(data.images || []);
@@ -532,7 +532,7 @@ const Navbar = ({
 										</div>
 									) : imageFiles.length === 0 ? (
 										<p className="text-sm text-muted-foreground py-4 text-center">
-											No images found in /public/images
+											No images found in /public/images/fullpage
 										</p>
 									) : (
 										<div className="flex flex-wrap gap-2">
@@ -540,10 +540,12 @@ const Navbar = ({
 												<div
 													key={img}
 													className="w-[200px] h-[200px] cursor-pointer rounded overflow-hidden border-2 border-muted hover:border-primary transition-colors relative bg-muted"
-													onClick={() => handleImageClick(`/images/${img}`)}
+													onClick={() =>
+														handleImageClick(`/images/fullpage/${img}`)
+													}
 												>
 													<Image
-														src={`/images/${img}`}
+														src={`/images/fullpage/${img}`}
 														alt={`Background ${img}`}
 														fill
 														sizes="200px"
@@ -878,7 +880,7 @@ const Navbar = ({
 																</div>
 															) : imageFiles.length === 0 ? (
 																<p className="text-sm text-muted-foreground py-4 text-center">
-																	No images found in /public/images
+																	No images found in /public/images/wheel
 																</p>
 															) : (
 																<div className="flex flex-wrap gap-2 max-h-[300px] overflow-y-auto">
@@ -887,11 +889,11 @@ const Navbar = ({
 																			key={img}
 																			className="w-[100px] h-[100px] cursor-pointer rounded overflow-hidden border-2 border-muted hover:border-primary transition-colors relative bg-muted"
 																			onClick={() =>
-																				handleImageClick(`/images/${img}`)
+																				handleImageClick(`/images/wheel/${img}`)
 																			}
 																		>
 																			<Image
-																				src={`/images/${img}`}
+																				src={`/images/wheel/${img}`}
 																				alt={`Background ${img}`}
 																				fill
 																				sizes="100px"

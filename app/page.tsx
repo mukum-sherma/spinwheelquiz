@@ -10,13 +10,29 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { Maximize2, Minimize2, Pencil, Check, X } from "lucide-react";
+import {
+	Maximize2,
+	Minimize2,
+	Pencil,
+	Check,
+	X,
+	Shuffle,
+	ArrowUp,
+	ArrowDown,
+	LoaderPinwheel,
+} from "lucide-react";
+import Image from "next/image";
+import {
+	DropdownMenu,
+	DropdownMenuTrigger,
+	DropdownMenuContent,
+} from "@/components/ui/dropdown-menu";
 import Navbar from "./_components/navbar";
 import localFont from "next/font/local";
 
 import { Lexend_Deca } from "next/font/google";
 import { Button } from "@/components/ui/button";
-import { DialogOverlay } from "@radix-ui/react-dialog";
+// DialogOverlay import removed (unused)
 const lexendDeca = Lexend_Deca({
 	subsets: ["latin"],
 	weight: ["400", "700"],
@@ -55,6 +71,43 @@ export default function Home() {
 	const [timerDuration, setTimerDuration] = useState(10);
 	const [backgroundSelection, setBackgroundSelection] =
 		useState<BackgroundChange | null>(null);
+	// When the user selects an image for the wheel, we store its src here
+	const [wheelImageSrc, setWheelImageSrc] = useState<string | null>(null);
+	const [wheelTextColor, setWheelTextColor] = useState<string>("#000");
+	// page text color state removed; we set document.body.style.color directly when needed
+
+	// Compute a simple contrast color (black or white) from an ImageBitmap by
+	// sampling pixels and computing average luminance.
+	const computeContrastFromBitmap = (bmp: ImageBitmap) => {
+		try {
+			const sampleSize = 64; // draw into a small canvas for speed
+			const off = document.createElement("canvas");
+			off.width = sampleSize;
+			off.height = sampleSize;
+			const ctx = off.getContext("2d");
+			if (!ctx) return "#000";
+			// draw the bitmap scaled to sampleSize
+			ctx.drawImage(bmp, 0, 0, sampleSize, sampleSize);
+			const data = ctx.getImageData(0, 0, sampleSize, sampleSize).data;
+			let total = 0;
+			let count = 0;
+			// sample every 4th pixel to be faster
+			for (let i = 0; i < data.length; i += 16) {
+				const r = data[i];
+				const g = data[i + 1];
+				const b = data[i + 2];
+				// standard luminance
+				const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+				total += lum;
+				count += 1;
+			}
+			const avg = total / Math.max(1, count);
+			return avg < 128 ? "#ffffff" : "#000000";
+		} catch (err) {
+			console.warn("contrast computation failed:", err);
+			return "#000000";
+		}
+	};
 	const [winningSound, setWinningSound] = useState("small-group-applause");
 	const [spinSound, setSpinSound] = useState("single-spin");
 	const [isFullscreen, setIsFullscreen] = useState(false);
@@ -63,6 +116,8 @@ export default function Home() {
 	const [tempTitle, setTempTitle] = useState("Enter an Awesome Title");
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const wheelSectionRef = useRef<HTMLDivElement>(null);
+	// loaded image bitmap for faster drawing into the canvas (per-segment clipping)
+	const wheelImageBitmapRef = useRef<ImageBitmap | null>(null);
 	const audioBufferRef = useRef<AudioBuffer | null>(null);
 	const audioContextRef = useRef<AudioContext | null>(null);
 	const lastSegmentRef = useRef<number>(-1);
@@ -450,6 +505,29 @@ export default function Home() {
 		setBackgroundSelection(change);
 	}, []);
 
+	// Image list for the small Entries -> Image dropdown
+	const [entryImageFiles, setEntryImageFiles] = useState<string[]>([]);
+	const [entryLoadingImages, setEntryLoadingImages] = useState(true);
+
+	useEffect(() => {
+		let mounted = true;
+		setEntryLoadingImages(true);
+		fetch("/api/images")
+			.then((res) => res.json())
+			.then((data) => {
+				if (!mounted) return;
+				setEntryImageFiles(Array.isArray(data.images) ? data.images : []);
+				setEntryLoadingImages(false);
+			})
+			.catch((err) => {
+				console.error("Failed to load entry images:", err);
+				if (mounted) setEntryLoadingImages(false);
+			});
+		return () => {
+			mounted = false;
+		};
+	}, []);
+
 	const toggleFullscreen = useCallback(async () => {
 		if (!wheelSectionRef.current) return;
 
@@ -504,20 +582,53 @@ export default function Home() {
 		};
 	}, []);
 
+	// Background selection handling
+	// - color: set page background and clear wheel image
+	// - image: use the selection as the wheel image (do NOT set body background)
+	// - reset/null: clear both
 	useEffect(() => {
 		if (backgroundSelection?.type === "color") {
+			// color should apply to body; clear any wheel image
+			setWheelImageSrc(null);
 			document.body.style.background = backgroundSelection.value;
 			document.body.style.backgroundImage = "";
 			document.body.style.backgroundSize = "";
 			document.body.style.backgroundPosition = "";
 			document.body.style.backgroundRepeat = "";
+			// reset any page text override
+			document.body.style.color = "";
 		} else if (backgroundSelection?.type === "image") {
-			document.body.style.background = "";
-			document.body.style.backgroundImage = `url(${backgroundSelection.value})`;
-			document.body.style.backgroundSize = "cover";
-			document.body.style.backgroundPosition = "center";
-			document.body.style.backgroundRepeat = "no-repeat";
+			// If the selected image is a fullpage image, set the body background.
+			// If it's a wheel image, use it to fill wheel partitions.
+			const val = backgroundSelection.value || "";
+			if (val.includes("/images/fullpage/")) {
+				// Apply as body background
+				document.body.style.background = "";
+				document.body.style.backgroundImage = `url(${val})`;
+				document.body.style.backgroundSize = "cover";
+				document.body.style.backgroundPosition = "center";
+				document.body.style.backgroundRepeat = "no-repeat";
+				// compute contrast and apply to page text color
+				(async () => {
+					try {
+						const res = await fetch(val);
+						const blob = await res.blob();
+						const bmp = await createImageBitmap(blob);
+						const contrast = computeContrastFromBitmap(bmp);
+						document.body.style.color = contrast;
+					} catch (err) {
+						console.warn("Failed to compute contrast for fullpage image:", err);
+					}
+				})();
+			} else if (val.includes("/images/wheel/")) {
+				// Use selected image as the wheel fill; do NOT change body background.
+				// Only update the wheel image source so any fullpage/background image
+				// previously applied to document.body is preserved.
+				setWheelImageSrc(val);
+			}
 		} else {
+			// reset everything
+			setWheelImageSrc(null);
 			document.body.style.background = "";
 			document.body.style.backgroundImage = "";
 			document.body.style.backgroundSize = "";
@@ -586,21 +697,50 @@ export default function Home() {
 		const centerScale = canvas.width >= 768 ? 1.7 : 1;
 
 		// Draw wheel segments
-		// const anglePerSegment = (2 * Math.PI) / namesList.length;
 		const anglePerSegment = (2 * Math.PI) / displayList.length;
 
-		// namesList.forEach((name, index) => {
 		displayList.forEach((name, index) => {
 			const startAngle = index * anglePerSegment + (rotation * Math.PI) / 180;
 			const endAngle = startAngle + anglePerSegment;
 
-			// Draw segment
+			// Build the sector path
 			ctx.beginPath();
 			ctx.moveTo(centerX, centerY);
 			ctx.arc(centerX, centerY, radius, startAngle, endAngle);
 			ctx.closePath();
-			ctx.fillStyle = colors[index % colors.length];
-			ctx.fill();
+
+			// If a wheel image is selected and loaded, draw it clipped to the sector.
+			// Otherwise fall back to the color fill.
+			if (wheelImageBitmapRef.current) {
+				ctx.save();
+				ctx.clip();
+				try {
+					const img = wheelImageBitmapRef.current as ImageBitmap;
+					// Draw the image sized to cover the whole wheel circle so each sector
+					// shows the same portion of the image. This keeps separators and
+					// center circle drawable on top later.
+					ctx.drawImage(
+						img,
+						centerX - radius,
+						centerY - radius,
+						radius * 2,
+						radius * 2
+					);
+				} catch (e) {
+					// ignore draw errors
+					console.warn("Failed to draw wheel image into canvas segment:", e);
+				}
+				ctx.restore();
+			} else {
+				ctx.fillStyle = colors[index % colors.length];
+				ctx.fill();
+			}
+
+			// Draw separator line on top so image does not cover it
+			ctx.beginPath();
+			ctx.moveTo(centerX, centerY);
+			ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+			ctx.closePath();
 			ctx.strokeStyle = "#fff";
 			ctx.lineWidth = 3;
 			ctx.stroke();
@@ -611,7 +751,8 @@ export default function Home() {
 			ctx.rotate(startAngle + anglePerSegment / 2);
 			ctx.textAlign = "center";
 			// ctx.fillStyle = "#000";
-			ctx.fillStyle = namesList.length === 0 ? "rgba(0, 0, 0, 0.4)" : "#000";
+			ctx.fillStyle =
+				namesList.length === 0 ? "rgba(0, 0, 0, 0.4)" : wheelTextColor;
 
 			// Calculate base font size based on canvas size (responsive)
 			const baseFontSize = Math.max(12, Math.round(radius / 20));
@@ -798,11 +939,53 @@ export default function Home() {
 		// Slight text offset when pressed
 		const textOffsetY = spinning ? 2 * centerScale : 0;
 		ctx.fillText("SPIN", centerX, centerY + textOffsetY);
-	}, [namesList, rotation, colors, spinning]);
+	}, [namesList, rotation, colors, spinning, wheelTextColor]);
 
 	useEffect(() => {
 		drawWheel();
 	}, [drawWheel]);
+
+	// Load the selected wheel image into an ImageBitmap for fast canvas draws.
+	useEffect(() => {
+		let mounted = true;
+		// clear previous bitmap
+		wheelImageBitmapRef.current = null;
+		if (!wheelImageSrc) {
+			// no wheel image selected: ensure fallback redraw
+			drawWheel();
+			return () => {
+				mounted = false;
+			};
+		}
+
+		(async () => {
+			try {
+				const res = await fetch(wheelImageSrc as string);
+				const blob = await res.blob();
+				const bitmap = await createImageBitmap(blob);
+				if (mounted) {
+					wheelImageBitmapRef.current = bitmap;
+					// compute contrast color for the selected image and update wheel text color
+					try {
+						const contrast = computeContrastFromBitmap(bitmap);
+						setWheelTextColor(contrast);
+					} catch (err) {
+						console.warn("Failed to compute contrast for wheel image:", err);
+					}
+					// redraw wheel now that bitmap is ready
+					drawWheel();
+				}
+			} catch (err) {
+				console.warn("Failed to load wheel image:", err);
+				wheelImageBitmapRef.current = null;
+				drawWheel();
+			}
+		})();
+
+		return () => {
+			mounted = false;
+		};
+	}, [wheelImageSrc, drawWheel]);
 
 	const determineWinner = useCallback(
 		(finalRotation: number) => {
@@ -1210,7 +1393,7 @@ export default function Home() {
 							{/* Fullscreen button - only on md+ screens */}
 							<button
 								onClick={toggleFullscreen}
-								className="hidden md:flex relative z-60 items-center gap-2 bg-black/70 hover:bg-black/90 text-white px-3 py-2 rounded-lg transition-all duration-200 shadow-lg"
+								className="hidden md:flex relative z-60 md:z-1 items-center gap-2 bg-black/70 hover:bg-black/90 text-white px-3 py-2 rounded-lg transition-all duration-200 shadow-lg"
 								aria-label={
 									isFullscreen ? "Exit fullscreen" : "Enter fullscreen"
 								}
@@ -1312,55 +1495,159 @@ export default function Home() {
 							<label className="block  mb-2 text-gray-600">
 								Enter names (one per line)
 							</label>
-							<div className="relative">
-								<textarea
-									id="names-input"
-									ref={(el) => {
-										textareaRef.current = el;
-									}}
-									value={names}
-									onChange={(e) => handleTextareaChange(e)}
-									// placeholder="Enter names, one per line"
-									rows={10}
-									onClick={updateFocusedLine}
-									onKeyUp={updateFocusedLine}
-									onKeyDown={handleKeyDownInTextarea}
-									onSelect={updateFocusedLine}
-									onScroll={() => setIconTop(calcIconTop())}
-									className="w-full whitespace-pre min-h-[400px] rounded-[7px] bg-gray-50 text-gray-800 resize-none text-[18px] md:text-[19px] font-bold border-4 shadow-inner border-gray-300 focus-visible:ring-0 focus-visible:border-blue-300 px-3 pt-3 pb-8"
-								/>
+							<div className="flex items-start gap-2">
+								<div className="relative flex-1">
+									<textarea
+										id="names-input"
+										ref={(el) => {
+											textareaRef.current = el;
+										}}
+										value={names}
+										onChange={(e) => handleTextareaChange(e)}
+										// placeholder="Enter names, one per line"
+										rows={10}
+										onClick={updateFocusedLine}
+										onKeyUp={updateFocusedLine}
+										onKeyDown={handleKeyDownInTextarea}
+										onSelect={updateFocusedLine}
+										onScroll={() => setIconTop(calcIconTop())}
+										className="w-full whitespace-pre min-h-[400px] rounded-[7px] bg-gray-50 text-gray-800 resize-none text-[18px] md:text-[19px] font-bold border-4 shadow-inner border-gray-300 focus-visible:ring-0 focus-visible:border-blue-300 px-3 pt-3 pb-8"
+									/>
 
-								{/* Delete icon shown inline at right edge of focused line when that line has text */}
-								{showDeleteIcon && (
-									<button
-										type="button"
-										onMouseDown={(e) => e.preventDefault()}
-										onClick={handleClearFocusedLine}
-										aria-label="Clear line"
-										className="absolute right-2 md:right-4 bg-white/90 rounded-full p-1 shadow-md hover:bg-white"
-										style={{ top: iconTop + "px" }}
-									>
-										<X size={16} />
-									</button>
-								)}
+									{/* Delete icon shown inline at right edge of focused line when that line has text */}
+									{showDeleteIcon && (
+										<button
+											type="button"
+											onMouseDown={(e) => e.preventDefault()}
+											onClick={handleClearFocusedLine}
+											aria-label="Clear line"
+											className="absolute right-2 bg-white/90 rounded-full p-1 shadow-md hover:bg-white"
+											style={{ top: iconTop + "px" }}
+										>
+											<X size={16} />
+										</button>
+									)}
 
-								{/* Reset / Undo buttons placed bottom-right inside textarea container */}
-								<div className="absolute right-2 bottom-2 flex gap-2 p-1">
+									{/* Reset / Undo buttons placed bottom-right inside textarea wrapper (now relative to textarea only) */}
+									<div className="absolute right-2 bottom-2 flex gap-2 p-0.5">
+										<button
+											type="button"
+											onClick={handleReset}
+											className="px-2 py-1 rounded bg-red-500 text-white text-sm hover:bg-red-600 shadow"
+										>
+											Reset
+										</button>
+										<button
+											type="button"
+											onClick={handleUndo}
+											disabled={!canUndo}
+											className="px-2 py-1 rounded bg-gray-200 text-sm hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed shadow"
+										>
+											Undo
+										</button>
+									</div>
+								</div>
+
+								{/* Right-side quick-order buttons (visible on all screens). Mirrors the names order radio options */}
+								<div
+									id="entries"
+									role="radiogroup"
+									aria-label="Quick name ordering"
+									className="flex flex-col items-stretch gap-2 ml-1 w-24"
+								>
 									<button
 										type="button"
-										onClick={handleReset}
-										className="px-3 py-1 rounded bg-red-500 text-white text-sm hover:bg-red-600 shadow"
+										role="radio"
+										aria-checked={nameOrder === "shuffle"}
+										onClick={() => handleNamesOrderChange("shuffle")}
+										className="flex items-center gap-2 px-2 py-1 rounded-full text-sm text-white shadow justify-start"
+										style={{ background: "#008cbd" }}
+										// style={{ background: "#155cff" }}
 									>
-										Reset
+										<Shuffle size={16} />
+										<span>Shuffle</span>
 									</button>
+
 									<button
 										type="button"
-										onClick={handleUndo}
-										disabled={!canUndo}
-										className="px-3 py-1 rounded bg-gray-200 text-sm hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed shadow"
+										role="radio"
+										aria-checked={nameOrder === "ascending"}
+										onClick={() => handleNamesOrderChange("ascending")}
+										className="flex items-center gap-2 px-2 py-1 rounded-full text-sm text-white shadow justify-start"
+										style={{ background: "#008cbd" }}
 									>
-										Undo
+										<ArrowUp size={16} />
+										<span>Asc</span>
 									</button>
+
+									<button
+										type="button"
+										role="radio"
+										aria-checked={nameOrder === "descending"}
+										onClick={() => handleNamesOrderChange("descending")}
+										className="flex items-center gap-2 px-2 py-1 rounded-full text-sm text-white shadow justify-start"
+										style={{ background: "#008cbd" }}
+									>
+										<ArrowDown size={16} />
+										<span>Dsc</span>
+									</button>
+
+									<DropdownMenu>
+										<DropdownMenuTrigger asChild>
+											<button
+												type="button"
+												role="button"
+												aria-label="Image"
+												className="flex items-center gap-2 px-2 py-1 rounded-full text-sm text-white shadow justify-start"
+												style={{ background: "#008cbd" }}
+											>
+												<LoaderPinwheel size={16} />
+												<span>Image</span>
+											</button>
+										</DropdownMenuTrigger>
+
+										<DropdownMenuContent className="w-[360px] max-h-[320px] overflow-y-auto">
+											<div className="p-3">
+												<p className="text-muted-foreground text-xs uppercase tracking-wide mb-3">
+													Choose wheel image
+												</p>
+												{entryLoadingImages ? (
+													<div className="flex items-center justify-center py-8">
+														<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+													</div>
+												) : entryImageFiles.length === 0 ? (
+													<p className="text-sm text-muted-foreground py-4 text-center">
+														No images found in /public/images/wheel
+													</p>
+												) : (
+													<div className="flex flex-wrap gap-2">
+														{entryImageFiles.map((img) => (
+															<div
+																key={img}
+																className="w-[120px] h-[80px] cursor-pointer rounded overflow-hidden border-2 border-muted hover:border-primary transition-colors relative bg-muted"
+																onClick={() =>
+																	handleBackgroundChange({
+																		type: "image",
+																		value: `/images/wheel/${img}`,
+																	})
+																}
+															>
+																<Image
+																	src={`/images/wheel/${img}`}
+																	alt={`Wheel ${img}`}
+																	fill
+																	sizes="120px"
+																	className="object-cover"
+																	loading="lazy"
+																	quality={70}
+																/>
+															</div>
+														))}
+													</div>
+												)}
+											</div>
+										</DropdownMenuContent>
+									</DropdownMenu>
 								</div>
 							</div>
 							<p className="text-sm text-gray-500 mt-2">
