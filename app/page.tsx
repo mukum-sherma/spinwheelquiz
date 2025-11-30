@@ -1795,7 +1795,7 @@ export default function Home() {
 												{!isIncluded && (
 													<div
 														key={`line-overlay-${idx}-${controlsTick}`}
-														className="absolute left-4 pointer-events-none text-[18px] md:text-[19px] decoration-red-400 font-bold text-gray-500 leading-7 line-through"
+														className="absolute left-4 pointer-events-none text-[18px] md:text-[19px] decoration-red-400 font-bold text-gray-400 leading-7 line-through"
 														style={{
 															top: calcIconTop(textareaRef.current, idx) + "px",
 														}}
