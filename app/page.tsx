@@ -206,7 +206,7 @@ export default function Home() {
 				lineHeight = fontSize * 1.2;
 			}
 			const paddingTop = parseFloat(style.paddingTop || "0") || 0;
-			const y = paddingTop + idx * lineHeight - el.scrollTop;
+			const y = paddingTop + idx * lineHeight - el.scrollTop + 4;
 			const max = el.clientHeight - lineHeight;
 			return Math.max(4, Math.min(max, y));
 		} catch {
@@ -1791,7 +1791,7 @@ export default function Home() {
 												{!isIncluded && (
 													<div
 														key={`line-overlay-${idx}-${controlsTick}`}
-														className="absolute left-3 pointer-events-none text-[18px] md:text-[19px] font-bold text-gray-400 leading-7"
+														className="absolute left-4 pointer-events-none text-[18px] md:text-[19px] font-bold text-gray-400 leading-7"
 														style={{
 															top: calcIconTop(textareaRef.current, idx) + "px",
 														}}
