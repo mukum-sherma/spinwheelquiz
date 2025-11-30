@@ -1476,7 +1476,11 @@ export default function Home() {
 											className="p-2 hover:bg-gray-200 rounded-lg transition"
 											aria-label="Edit title"
 										>
-											<Pencil size={18} className="text-gray-600" />
+											<Pencil
+												size={18}
+												className="text-gray-600"
+												style={getTextContrastStyles() || undefined}
+											/>
 										</button>
 									</div>
 								)}
@@ -1489,6 +1493,7 @@ export default function Home() {
 								aria-label={
 									isFullscreen ? "Exit fullscreen" : "Enter fullscreen"
 								}
+								style={getButtonContrastStyles() || undefined}
 							>
 								{isFullscreen ? (
 									<>
@@ -1597,65 +1602,13 @@ export default function Home() {
 							>
 								Enter names (one per line)
 							</label>
-							<div className="flex items-start gap-2">
-								<div className="relative flex-1">
-									<textarea
-										id="names-input"
-										ref={(el) => {
-											textareaRef.current = el;
-										}}
-										value={names}
-										onChange={(e) => handleTextareaChange(e)}
-										// placeholder="Enter names, one per line"
-										rows={10}
-										onClick={updateFocusedLine}
-										onKeyUp={updateFocusedLine}
-										onKeyDown={handleKeyDownInTextarea}
-										onSelect={updateFocusedLine}
-										onScroll={() => setIconTop(calcIconTop())}
-										className="w-full whitespace-pre min-h-[400px] rounded-[7px] bg-gray-50 text-gray-800 resize-none text-[18px] md:text-[19px] font-bold border-4 shadow-inner border-gray-300 focus-visible:ring-0 focus-visible:border-blue-300 px-3 pt-3 pb-8"
-									/>
-
-									{/* Delete icon shown inline at right edge of focused line when that line has text */}
-									{showDeleteIcon && (
-										<button
-											type="button"
-											onMouseDown={(e) => e.preventDefault()}
-											onClick={handleClearFocusedLine}
-											aria-label="Clear line"
-											className="absolute right-2 bg-white/90 rounded-full p-1 shadow-md hover:bg-white"
-											style={{ top: iconTop + "px" }}
-										>
-											<X size={16} />
-										</button>
-									)}
-
-									{/* Reset / Undo buttons placed bottom-right inside textarea wrapper (now relative to textarea only) */}
-									<div className="absolute right-2 bottom-2 flex gap-2 p-0.5">
-										<button
-											type="button"
-											onClick={handleReset}
-											className="px-2 py-1 rounded bg-red-500 text-white text-sm hover:bg-red-600 shadow"
-										>
-											Reset
-										</button>
-										<button
-											type="button"
-											onClick={handleUndo}
-											disabled={!canUndo}
-											className="px-2 py-1 text-gray-50 rounded bg-[#404040] text-sm hover:bg-gray-300 disabled:opacity-30 disabled:cursor-not-allowed shadow"
-										>
-											Undo
-										</button>
-									</div>
-								</div>
-
+							<div className="flex flex-col items-start gap-2">
 								{/* Right-side quick-order buttons (visible on all screens). Mirrors the names order radio options */}
 								<div
 									id="entries"
 									role="radiogroup"
 									aria-label="Quick name ordering"
-									className="flex flex-col items-stretch gap-2 ml-1 w-24"
+									className="flex items-stretch gap-2 ml-1 w-24 flex-wrap w-full"
 								>
 									<button
 										type="button"
@@ -1762,6 +1715,57 @@ export default function Home() {
 											</div>
 										</DropdownMenuContent>
 									</DropdownMenu>
+								</div>
+								<div className="relative flex-1">
+									<textarea
+										id="names-input"
+										ref={(el) => {
+											textareaRef.current = el;
+										}}
+										value={names}
+										onChange={(e) => handleTextareaChange(e)}
+										// placeholder="Enter names, one per line"
+										rows={10}
+										onClick={updateFocusedLine}
+										onKeyUp={updateFocusedLine}
+										onKeyDown={handleKeyDownInTextarea}
+										onSelect={updateFocusedLine}
+										onScroll={() => setIconTop(calcIconTop())}
+										className="w-full whitespace-pre min-h-[400px] rounded-[7px] bg-gray-50 text-gray-800 resize-none text-[18px] md:text-[19px] font-bold border-4 shadow-inner border-gray-300 focus-visible:ring-0 focus-visible:border-blue-300 px-3 pt-3 pb-8"
+									/>
+
+									{/* Delete icon shown inline at right edge of focused line when that line has text */}
+									{showDeleteIcon && (
+										<button
+											type="button"
+											onMouseDown={(e) => e.preventDefault()}
+											onClick={handleClearFocusedLine}
+											aria-label="Clear line"
+											className="absolute right-2 bg-white/90 rounded-full p-1 shadow-md hover:bg-white"
+											style={{ top: iconTop + "px" }}
+										>
+											<X size={16} />
+										</button>
+									)}
+
+									{/* Reset / Undo buttons placed bottom-right inside textarea wrapper (now relative to textarea only) */}
+									<div className="absolute right-2 bottom-2 flex gap-2 p-0.5">
+										<button
+											type="button"
+											onClick={handleReset}
+											className="px-2 py-1 rounded bg-red-500 text-white text-sm hover:bg-red-600 shadow"
+										>
+											Reset
+										</button>
+										<button
+											type="button"
+											onClick={handleUndo}
+											disabled={!canUndo}
+											className="px-2 py-1 text-gray-50 rounded bg-[#404040] text-sm hover:bg-gray-300 disabled:opacity-30 disabled:cursor-not-allowed shadow"
+										>
+											Undo
+										</button>
+									</div>
 								</div>
 							</div>
 							<p
