@@ -242,6 +242,9 @@ export default function Home() {
 
 	// textarea controls for per-line delete icon
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+	// refs for advanced-mode per-line inputs, keyed by original index after render
+	const advancedInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
 	// simple undo history for textarea content
 	const historyRef = useRef<string[]>([names]);
 	const historyIndexRef = useRef<number>(0);
@@ -512,6 +515,47 @@ export default function Home() {
 			}
 			return lines.join("\n");
 		});
+	};
+
+	// When an advanced-mode input receives focus, remove any other empty lines
+	// (whitespace-only) from the names list, but keep the focused line.
+	const handleAdvancedFocus = (index: number) => {
+		const lines = names.split("\n");
+		// detect empty lines other than the focused one
+		const emptyOthers = lines.some((l, i) => i !== index && l.trim() === "");
+		if (!emptyOthers) {
+			setFocusedLine(index);
+			setControlsTick((t) => t + 1);
+			return;
+		}
+
+		// Count how many empty lines occur before the focused index so we can
+		// compute the new index after compaction.
+		const removedBefore = lines
+			.slice(0, index)
+			.filter((l) => l.trim() === "").length;
+
+		const kept: string[] = [];
+		for (let i = 0; i < lines.length; i++) {
+			if (i !== index && lines[i].trim() === "") continue;
+			kept.push(lines[i]);
+		}
+
+		const newValue = kept.join("\n");
+		setNames(newValue);
+
+		const newIndex = index - removedBefore;
+		// Restore focus to the corresponding input after DOM updates
+		setTimeout(() => {
+			const el = advancedInputRefs.current[newIndex];
+			if (el) {
+				el.focus();
+				const len = el.value.length;
+				el.selectionStart = el.selectionEnd = len;
+			}
+			setFocusedLine(newIndex);
+			setControlsTick((t) => t + 1);
+		}, 0);
 	};
 
 	// Edit a specific line's text (Advanced mode). Updates names and keeps includeMap in sync.
@@ -2137,13 +2181,17 @@ export default function Home() {
 													: false;
 												return (
 													<div
-														key={`adv-line-${idx}-${controlsTick}`}
+														key={`adv-line-${idx}`}
 														className="flex flex-col gap-2 border-b border-gray-200 py-2"
 													>
 														{/* First inner div: mirrors line content and controls */}
 														<div className="flex items-center justify-between">
 															<input
 																type="text"
+																ref={(el) => {
+																	advancedInputRefs.current[idx] = el;
+																}}
+																onFocus={() => handleAdvancedFocus(idx)}
 																value={text || ""}
 																onChange={(e) => editLine(idx, e.target.value)}
 																aria-label={`Edit name for line ${idx + 1}`}
