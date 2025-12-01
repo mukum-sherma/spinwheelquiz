@@ -73,6 +73,9 @@ export default function Home() {
 		useState<BackgroundChange | null>(null);
 	// Track when a fullpage image is applied to the body and its computed contrast color
 	const [bodyBgIsImage, setBodyBgIsImage] = useState(false);
+	// Track when a body background color (not image) is applied so we can apply the
+	// same softened contrast/stroke/shadow styles as we do for fullpage images.
+	const [bodyBgIsColor, setBodyBgIsColor] = useState(false);
 	const [bodyContrast, setBodyContrast] = useState<string>("");
 	// softened text color (reduced contrast) applied to body and used for text color
 	const [bodyTextColor, setBodyTextColor] = useState<string>("");
@@ -129,10 +132,56 @@ export default function Home() {
 		}
 	};
 
+	// Compute contrast (black or white) from a CSS color string (hex or rgb).
+	const computeContrastFromColor = (color: string) => {
+		try {
+			let r = 0,
+				g = 0,
+				b = 0;
+			const s = color.trim().toLowerCase();
+			if (s.startsWith("#")) {
+				let hex = s.slice(1);
+				if (hex.length === 3) {
+					hex = hex
+						.split("")
+						.map((c) => c + c)
+						.join("");
+				}
+				if (hex.length === 6) {
+					r = parseInt(hex.slice(0, 2), 16);
+					g = parseInt(hex.slice(2, 4), 16);
+					b = parseInt(hex.slice(4, 6), 16);
+				}
+			} else if (s.startsWith("rgb(") || s.startsWith("rgba(")) {
+				const nums = s.replace(/rgba?\(|\)|\s/g, "").split(",");
+				r = parseInt(nums[0], 10) || 0;
+				g = parseInt(nums[1], 10) || 0;
+				b = parseInt(nums[2], 10) || 0;
+			} else {
+				// Fallback: create a temporary element to resolve color to rgb
+				const el = document.createElement("div");
+				el.style.color = color;
+				document.body.appendChild(el);
+				const cs = window.getComputedStyle(el).color;
+				document.body.removeChild(el);
+				const nums = cs.replace(/rgba?\(|\)|\s/g, "").split(",");
+				r = parseInt(nums[0], 10) || 0;
+				g = parseInt(nums[1], 10) || 0;
+				b = parseInt(nums[2], 10) || 0;
+			}
+			const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+			return lum < 128 ? "#ffffff" : "#000000";
+		} catch (err) {
+			console.warn("Failed to compute contrast from color:", color, err);
+			return "#000000";
+		}
+	};
+
 	const getTextContrastStyles = useCallback(():
 		| React.CSSProperties
 		| undefined => {
-		if (!bodyBgIsImage) return undefined;
+		// Apply contrast styles when either a fullpage image or a body color is active.
+		if (!bodyBgIsImage && !bodyBgIsColor) return undefined;
 		const c = (bodyContrast || "").toLowerCase();
 		const isWhite = c === "#ffffff" || c === "#fff" || c.includes("white");
 		// Softer stroke and shadow for a pleasing, reduced contrast look
@@ -146,12 +195,13 @@ export default function Home() {
 			color: bodyTextColor || undefined,
 			textShadow,
 		} as React.CSSProperties;
-	}, [bodyBgIsImage, bodyContrast, bodyTextColor]);
+	}, [bodyBgIsImage, bodyBgIsColor, bodyContrast, bodyTextColor]);
 
 	const getButtonContrastStyles = useCallback(():
 		| React.CSSProperties
 		| undefined => {
-		if (!bodyBgIsImage) return undefined;
+		// Apply contrast styles when either a fullpage image or a body color is active.
+		if (!bodyBgIsImage && !bodyBgIsColor) return undefined;
 		const c = (bodyContrast || "").toLowerCase();
 		const isWhite = c === "#ffffff" || c === "#fff" || c.includes("white");
 		// Use a gentler border and shadow that still contrasts but is visually pleasing
@@ -684,11 +734,21 @@ export default function Home() {
 			document.body.style.backgroundSize = "";
 			document.body.style.backgroundPosition = "";
 			document.body.style.backgroundRepeat = "";
-			// reset any page text override
-			document.body.style.color = "";
-			setBodyBgIsImage(false);
-			setBodyContrast("");
-			setBodyTextColor("");
+			// compute contrast for the selected color and apply softened text color
+			try {
+				const contrast = computeContrastFromColor(backgroundSelection.value);
+				const softened =
+					contrast === "#ffffff"
+						? "rgba(255,255,255,0.94)"
+						: "rgba(0,0,0,0.92)";
+				document.body.style.color = softened;
+				setBodyBgIsColor(true);
+				setBodyBgIsImage(false);
+				setBodyContrast(contrast);
+				setBodyTextColor(softened);
+			} catch (err) {
+				console.warn("Failed to compute contrast for color background:", err);
+			}
 		} else if (backgroundSelection?.type === "image") {
 			// If the selected image is a fullpage image, set the body background.
 			// If it's a wheel image, use it to fill wheel partitions.
@@ -716,6 +776,7 @@ export default function Home() {
 						// set state so UI can adapt (we keep raw contrast for isWhite checks,
 						// and bodyTextColor for actual CSS color values)
 						setBodyBgIsImage(true);
+						setBodyBgIsColor(false);
 						setBodyContrast(contrast);
 						setBodyTextColor(softened);
 					} catch (err) {
@@ -737,6 +798,7 @@ export default function Home() {
 			document.body.style.backgroundPosition = "";
 			document.body.style.backgroundRepeat = "";
 			setBodyBgIsImage(false);
+			setBodyBgIsColor(false);
 			setBodyContrast("");
 			setBodyTextColor("");
 		}
