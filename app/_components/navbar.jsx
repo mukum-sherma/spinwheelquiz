@@ -745,12 +745,31 @@ const Navbar = ({
 										</div>
 										<div className="h-px bg-border my-1" />
 										<div className="p-1 space-y-1">
+											<div
+												className="flex flex-row items-center gap-3 w-full p-2 font-medium"
+												id="colorsMobile"
+											>
+												<label
+													htmlFor="colorsMobileInput"
+													className="flex items-center gap-2 cursor-pointer"
+												>
+													<Palette className="h-4 w-4" />
+													<span className="text-sm">Colors</span>
+												</label>
+												<input
+													id="colorsMobileInput"
+													type="color"
+													className="h-0 w-full p-0 cursor-pointer rounded"
+													onChange={handleColorChange}
+													aria-label="Select background color"
+												/>
+											</div>
 											<Accordion
 												type="single"
 												collapsible
 												className="w-full md:hidden"
 											>
-												<AccordionItem value="colors" className="border-0">
+												{/* <AccordionItem value="colors" className="border-0">
 													<AccordionTrigger className="w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-sm hover:bg-accent hover:no-underline">
 														<div className="flex items-center gap-2">
 															<Palette className="h-4 w-4" /> Colors
@@ -769,7 +788,7 @@ const Navbar = ({
 															/>
 														</div>
 													</AccordionContent>
-												</AccordionItem>
+												</AccordionItem> */}
 												<AccordionItem value="images" className="border-0">
 													<AccordionTrigger className="w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded-sm hover:bg-accent hover:no-underline">
 														<div className="flex items-center gap-2">
