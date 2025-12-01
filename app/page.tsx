@@ -2085,7 +2085,7 @@ export default function Home() {
 												if (!name) return null;
 												const isIncluded = includeMap[name] !== false;
 												return (
-													<div key={`line-wrap-${idx}-${controlsTick}` }>
+													<div key={`line-wrap-${idx}-${controlsTick}`}>
 														{/* Overlay to show the line text with a strike-through when unchecked. Positioned over textarea text. */}
 														{!isIncluded && (
 															<div
