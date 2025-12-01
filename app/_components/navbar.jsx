@@ -294,6 +294,20 @@ const Navbar = ({
 		[onBackgroundChange]
 	);
 
+	// ref for programmatically opening the native color picker
+	const colorInputRef = useRef(null);
+	// timer/ref used to poll for the color input mounting so we can open picker
+	const colorPickerPollRef = useRef(null);
+
+	useEffect(() => {
+		return () => {
+			if (colorPickerPollRef.current) {
+				clearInterval(colorPickerPollRef.current);
+				colorPickerPollRef.current = null;
+			}
+		};
+	}, []);
+
 	const menubarItems = useMemo(
 		() => (
 			<Menubar
@@ -438,17 +452,55 @@ const Navbar = ({
 						<MenubarLabel>Customize the stage</MenubarLabel>
 						<MenubarSeparator />
 						<MenubarSub>
-							<MenubarSubTrigger>
+							<MenubarSubTrigger
+								onPointerEnter={() => {
+									// Start polling for the color input to mount, then open picker.
+									if (colorPickerPollRef.current) return;
+									colorPickerPollRef.current = setInterval(() => {
+										const el = colorInputRef.current;
+										if (!el) return;
+										try {
+											if (typeof el.showPicker === "function") {
+												el.showPicker();
+											} else {
+												el.click();
+											}
+										} catch {
+											// ignore
+										}
+										clearInterval(colorPickerPollRef.current);
+										colorPickerPollRef.current = null;
+									}, 60);
+								}}
+								onPointerLeave={() => {
+									if (colorPickerPollRef.current) {
+										clearInterval(colorPickerPollRef.current);
+										colorPickerPollRef.current = null;
+									}
+								}}
+								onClick={() => {
+									// Try immediately on click as a fallback
+									const el = colorInputRef.current;
+									if (!el) return;
+									try {
+										if (typeof el.showPicker === "function") el.showPicker();
+										else el.click();
+									} catch {
+										// ignore
+									}
+								}}
+							>
 								<Palette className="h-4 w-4 mr-2" /> Colors
 							</MenubarSubTrigger>
 							<MenubarSubContent>
-								<div className="space-y-2 p-2 text-sm">
+								<div className="p-2 text-sm">
 									<p className="text-muted-foreground text-xs uppercase tracking-wide">
-										Pick a hue
+										PICK A COLOR
 									</p>
 									<input
+										ref={colorInputRef}
 										type="color"
-										className="h-10 w-full cursor-pointer rounded border border-muted"
+										className="h-0 w-full cursor-pointer rounded border border-muted"
 										onChange={handleColorChange}
 										aria-label="Select background color"
 									/>
@@ -731,7 +783,7 @@ const Navbar = ({
 													<AccordionContent className="px-2 pb-2">
 														<div className="space-y-2 p-2 text-sm">
 															<p className="text-muted-foreground text-xs uppercase tracking-wide">
-																Pick a hue
+																PICK A COLOR
 															</p>
 															<input
 																type="color"
