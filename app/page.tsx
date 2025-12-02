@@ -2239,7 +2239,7 @@ export default function Home() {
 																maxLength={50}
 															/>
 															<div
-																className="flex items-center gap-3 absolute md:right-7 right-6"
+																className="flex items-center gap-3 absolute right-6 md:right-4"
 																style={{ width: ICON_DIV_WIDTH }}
 															>
 																<input
