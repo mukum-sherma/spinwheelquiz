@@ -1751,8 +1751,46 @@ export default function Home() {
 	}, [drawWheel]);
 
 	// Lines used for rendering lists: when names === "" we want zero rows
-	const renderLines =
-		names === "" ? (hideEmpty ? [] : [""]) : names.split("\n");
+	const renderLines = useMemo(() => {
+		return names === "" ? (hideEmpty ? [] : [""]) : names.split("\n");
+	}, [names, hideEmpty]);
+
+	// If we start with an empty list, focus the first input line automatically.
+	useEffect(() => {
+		if (renderLines.length === 0) return;
+		// focus when all lines are empty
+		const hasNonEmpty = renderLines.some((l) => (l || "").trim() !== "");
+		if (!hasNonEmpty) {
+			setTimeout(() => {
+				const ref = advancedMode
+					? advancedInputRefs.current[0]
+					: listInputRefs.current[0];
+				if (ref) {
+					try {
+						ref.focus();
+						ref.selectionStart = ref.selectionEnd = 0;
+						setFocusedLine(0);
+					} catch {}
+				}
+			}, 0);
+		}
+	}, [names, hideEmpty, advancedMode, renderLines]);
+
+	// Helper to determine whether a pointer event occurred inside an existing
+	// line element. Traverses DOM ancestors from event.target up to the
+	// container; this is robust across mobile browsers that may not expose
+	// `composedPath` or `path` on the native event.
+	const isEventInsideLine = (e: React.PointerEvent) => {
+		let node = e.target as HTMLElement | null;
+		const container = e.currentTarget as HTMLElement | null;
+		while (node && node !== container) {
+			if (node.dataset && typeof node.dataset.lineIndex !== "undefined") {
+				return true;
+			}
+			node = node.parentElement;
+		}
+		return false;
+	};
 
 	return (
 		<div className="min-h-screen">
@@ -2057,13 +2095,13 @@ export default function Home() {
 							>
 								Enter names (one per line)
 							</label>
-							<div className="flex flex-col items-start gap-2">
+							<div className="flex flex-col items-start gap-4">
 								{/* Right-side quick-order buttons (visible on all screens). Mirrors the names order radio options */}
 								<div
 									id="entries"
 									role="radiogroup"
 									aria-label="Quick name ordering"
-									className="flex items-stretch gap-2 ml-1 w-24 flex-wrap w-full"
+									className="flex items-stretch gap-3 ml-1 w-24 flex-wrap w-full"
 								>
 									<button
 										type="button"
@@ -2189,6 +2227,57 @@ export default function Home() {
 												role="region"
 												aria-label="Names list"
 												className="w-full  whitespace-pre rounded-[7px] bg-gray-50 text-gray-800 overflow-auto text-[18px] md:text-[19px] font-bold border-4 shadow-inner border-gray-300 px-3 pt-3 pb-8 leading-7 relative"
+												/* Require double-click on empty area (outside inner divs)
+												   to focus the last input or create a new one. Single click
+												   no longer creates/focuses to avoid accidental mobile keyboards. */
+												onPointerDown={(e) => {
+													// If the event is inside a line, let that event proceed.
+													if (isEventInsideLine(e)) return;
+													// Otherwise do nothing on single pointer down.
+												}}
+												onClick={(e) => {
+													// Only react when double-click occurred outside inner line elements
+													// Walk up from target to container to detect a data-line-index
+													let node = e.target as HTMLElement | null;
+													const container =
+														e.currentTarget as HTMLElement | null;
+													while (node && node !== container) {
+														if (
+															node.dataset &&
+															typeof (node.dataset as any).lineIndex !==
+																"undefined"
+														) {
+															// double-click was inside a line; ignore
+															return;
+														}
+														node = node.parentElement;
+													}
+
+													e.stopPropagation();
+
+													// If no rendered lines exist, create one
+													if (renderLines.length === 0) {
+														setHideEmpty(false);
+														insertLineAfter(-1);
+														return;
+													}
+
+													// Focus the last existing inner input
+													const lastIdx = renderLines.length - 1;
+													const ref = advancedMode
+														? advancedInputRefs.current[lastIdx]
+														: listInputRefs.current[lastIdx];
+													if (ref) {
+														try {
+															ref.focus();
+															const len = ref.value.length;
+															ref.selectionStart = ref.selectionEnd = len;
+														} catch {}
+													} else {
+														// Fallback: if no ref found, create a new empty line
+														insertLineAfter(lastIdx);
+													}
+												}}
 												style={{
 													// height: Math.min(
 													// 	900,
@@ -2214,7 +2303,8 @@ export default function Home() {
 													return (
 														<div
 															key={`line-div-${idx}`}
-															className="flex items-center justify-between gap-2 mb-1 py-1 w-full flex-nowrap"
+															data-line-index={idx}
+															className="relative flex items-center justify-between gap-2 mb-1 py-1 w-full flex-nowrap"
 														>
 															<input
 																ref={(el) => {
@@ -2238,8 +2328,12 @@ export default function Home() {
 																}`}
 																maxLength={50}
 															/>
+															{/* empty-line affordance handled by input placeholder; no plus icon */}
+
 															<div
-																className="flex items-center gap-3 absolute right-6 md:right-4"
+																className={`${
+																	(text || "").trim() ? "flex" : "hidden"
+																} items-center gap-3 absolute right-3 md:right-1`}
 																style={{ width: ICON_DIV_WIDTH }}
 															>
 																<input
@@ -2341,6 +2435,16 @@ export default function Home() {
 											role="region"
 											aria-label="Advanced names editor"
 											className="w-full whitespace-pre rounded-[7px] bg-gray-50 text-gray-800 overflow-auto text-[18px] md:text-[19px] font-bold border-4 shadow-inner border-gray-300 px-2 pt-3 pb-8 leading-7"
+											onPointerDown={(e) => {
+												if (isEventInsideLine(e)) return;
+												if (renderLines.length === 0) {
+													setHideEmpty(false);
+													e.stopPropagation();
+													return;
+												}
+												insertLineAfter(renderLines.length - 1);
+												e.stopPropagation();
+											}}
 											style={{
 												width: textareaSize.width
 													? textareaSize.width + "px"
@@ -2361,6 +2465,7 @@ export default function Home() {
 												return (
 													<div
 														key={`adv-line-${idx}`}
+														data-line-index={idx}
 														className="flex flex-col gap-2 mb-1 py-2 w-full rounded-sm border border-gray-200"
 														style={{
 															backgroundColor:
@@ -2394,7 +2499,11 @@ export default function Home() {
 																maxLength={50}
 															/>
 															<div
-																className="absolute flex items-center gap-3 right-1"
+																className={`${
+																	(text || "").trim()
+																		? "absolute flex"
+																		: "hidden"
+																} items-center gap-3 right-3 md:right-2`}
 																style={{ width: ICON_DIV_WIDTH }}
 															>
 																<input
