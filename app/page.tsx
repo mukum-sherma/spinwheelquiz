@@ -2184,109 +2184,140 @@ export default function Home() {
 								{/* Normal mode  */}
 								<div className="relative flex-1 w-full">
 									{!advancedMode ? (
-										<div
-											role="region"
-											aria-label="Names list"
-											className="w-full whitespace-pre rounded-[7px] bg-gray-50 text-gray-800 overflow-auto text-[18px] md:text-[19px] font-bold border-4 shadow-inner border-gray-300 px-3 pt-3 pb-8 leading-7 relative"
-											style={{
-												height: Math.min(
-													900,
-													Math.max(600, names.split("\n").length * 42 + 24)
-												),
-												overflowY: "auto",
-											}}
-										>
-											{renderLines.map((ln, idx) => {
-												const text = ln;
-												const isIncluded = (text || "").trim()
-													? includeMap[(text || "").trim()] !== false
-													: false;
-												return (
-													<div
-														key={`line-div-${idx}`}
-														className="flex items-center justify-between gap-2 mb-1 py-1 w-full flex-nowrap"
-													>
-														<input
-															ref={(el) => {
-																listInputRefs.current[idx] = el;
-															}}
-															onFocus={() => handleListFocus(idx)}
-															onKeyDown={(e) => handleKeyDownInsert(e, idx)}
-															type="text"
-															value={text || ""}
-															onChange={(e) => editLine(idx, e.target.value)}
-															aria-label={`Edit name for line ${idx + 1}`}
-															style={{
-																width: `calc(100% - ${ICON_DIV_WIDTH + 10}px)`,
-															}}
-															className={`mr-3 truncate text-[18px] md:text-[19px] font-bold focus:outline-none ${
-																!isIncluded
-																	? "line-through decoration-red-400 text-gray-400"
-																	: ""
-															}`}
-															maxLength={50}
-														/>
+										<div className="w-full">
+											<div
+												role="region"
+												aria-label="Names list"
+												className="w-full  whitespace-pre rounded-[7px] bg-gray-50 text-gray-800 overflow-auto text-[18px] md:text-[19px] font-bold border-4 shadow-inner border-gray-300 px-3 pt-3 pb-8 leading-7 relative"
+												style={{
+													// height: Math.min(
+													// 	900,
+													// 	Math.max(600, names.split("\n").length * 42 + 24)
+													// ),
+													// overflowY: "auto",
+													width: textareaSize.width
+														? textareaSize.width + "px"
+														: undefined,
+													height: textareaSize.height
+														? textareaSize.height + "px"
+														: undefined,
+													minHeight: "500px",
+													maxHeight: "900px",
+													overflowY: "auto",
+												}}
+											>
+												{renderLines.map((ln, idx) => {
+													const text = ln;
+													const isIncluded = (text || "").trim()
+														? includeMap[(text || "").trim()] !== false
+														: false;
+													return (
 														<div
-															className="flex items-center gap-3 absolute md:right-7 right-6"
-															style={{ width: ICON_DIV_WIDTH }}
+															key={`line-div-${idx}`}
+															className="flex items-center justify-between gap-2 mb-1 py-1 w-full flex-nowrap"
 														>
 															<input
-																type="checkbox"
-																aria-label={`Include ${(
-																	text || ""
-																).trim()} on wheel`}
-																onPointerDown={(e) => e.stopPropagation()}
-																checked={isIncluded}
-																onChange={(e) =>
-																	handleToggleInclude(idx, e.target.checked)
-																}
-																className="w-5 h-5 bg-white rounded"
+																ref={(el) => {
+																	listInputRefs.current[idx] = el;
+																}}
+																onFocus={() => handleListFocus(idx)}
+																onKeyDown={(e) => handleKeyDownInsert(e, idx)}
+																type="text"
+																value={text || ""}
+																onChange={(e) => editLine(idx, e.target.value)}
+																aria-label={`Edit name for line ${idx + 1}`}
+																style={{
+																	width: `calc(100% - ${
+																		ICON_DIV_WIDTH + 10
+																	}px)`,
+																}}
+																className={`mr-3 truncate text-[18px] md:text-[19px] font-bold focus:outline-none ${
+																	!isIncluded
+																		? "line-through decoration-red-400 text-gray-400"
+																		: ""
+																}`}
+																maxLength={50}
 															/>
-															<button
-																type="button"
-																onPointerDown={(e) => e.stopPropagation()}
-																onClick={(e) => {
-																	e.preventDefault();
-																	e.stopPropagation();
-																	setHideEmpty(false);
-																	clearLineDirect(idx);
-																	// focus the input after clearing
-																	const ref = advancedMode
-																		? advancedInputRefs.current[idx]
-																		: listInputRefs.current[idx];
-																	if (ref) {
-																		try {
-																			ref.focus();
-																			ref.selectionStart = ref.selectionEnd = 0;
-																		} catch {}
+															<div
+																className="flex items-center gap-3 absolute md:right-7 right-6"
+																style={{ width: ICON_DIV_WIDTH }}
+															>
+																<input
+																	type="checkbox"
+																	aria-label={`Include ${(
+																		text || ""
+																	).trim()} on wheel`}
+																	onPointerDown={(e) => e.stopPropagation()}
+																	checked={isIncluded}
+																	onChange={(e) =>
+																		handleToggleInclude(idx, e.target.checked)
 																	}
-																}}
-																aria-label={`Clear line ${idx + 1}`}
-																className="w-6 h-6 bg-white/90 rounded shadow-md flex items-center justify-center hover:bg-white p-0"
-															>
-																<X size={18} color="#404040" />
-															</button>
-															<button
-																type="button"
-																onPointerDown={(e) => e.stopPropagation()}
-																onClick={(e) => {
-																	e.preventDefault();
-																	e.stopPropagation();
-																	setHideEmpty(false);
-																	deleteLine(idx);
-																}}
-																aria-label={`Delete line ${idx + 1}`}
-																className="w-6 h-6 bg-red-100 text-red-600 rounded shadow-md flex items-center justify-center hover:bg-red-200 p-0"
-															>
-																<Trash2 size={16} />
-															</button>
+																	className="w-5 h-5 bg-white rounded"
+																/>
+																<button
+																	type="button"
+																	onPointerDown={(e) => e.stopPropagation()}
+																	onClick={(e) => {
+																		e.preventDefault();
+																		e.stopPropagation();
+																		setHideEmpty(false);
+																		clearLineDirect(idx);
+																		// focus the input after clearing
+																		const ref = advancedMode
+																			? advancedInputRefs.current[idx]
+																			: listInputRefs.current[idx];
+																		if (ref) {
+																			try {
+																				ref.focus();
+																				ref.selectionStart =
+																					ref.selectionEnd = 0;
+																			} catch {}
+																		}
+																	}}
+																	aria-label={`Clear line ${idx + 1}`}
+																	className="w-6 h-6 bg-white/90 rounded shadow-md flex items-center justify-center hover:bg-white p-0"
+																>
+																	<X size={18} color="#404040" />
+																</button>
+																<button
+																	type="button"
+																	onPointerDown={(e) => e.stopPropagation()}
+																	onClick={(e) => {
+																		e.preventDefault();
+																		e.stopPropagation();
+																		setHideEmpty(false);
+																		deleteLine(idx);
+																	}}
+																	aria-label={`Delete line ${idx + 1}`}
+																	className="w-6 h-6 bg-red-100 text-red-600 rounded shadow-md flex items-center justify-center hover:bg-red-200 p-0"
+																>
+																	<Trash2 size={16} />
+																</button>
+															</div>
 														</div>
-													</div>
-												);
-											})}
+													);
+												})}
 
-											{/* Reset / Undo buttons */}
-											<div className="absolute right-2 bottom-2 flex gap-2 p-0.5">
+												{/* Reset / Undo buttons */}
+												{/* <div className="absolute right-0 bottom-0  flex gap-2 p-1.5">
+													<button
+														type="button"
+														onClick={handleReset}
+														className="px-2 py-1 rounded bg-red-500 text-white text-sm hover:bg-red-600 shadow"
+													>
+														Reset
+													</button>
+													<button
+														type="button"
+														onClick={handleUndo}
+														disabled={!canUndo}
+														className="px-2 py-1 text-gray-50 rounded bg-[#404040] text-sm hover:bg-gray-300 disabled:opacity-30 disabled:cursor-not-allowed shadow"
+													>
+														Undo
+													</button>
+												</div> */}
+											</div>
+											<div className="absolute right-0 bottom-0  flex gap-2 px-4.5 py-2">
 												<button
 													type="button"
 													onClick={handleReset}
@@ -2442,7 +2473,7 @@ export default function Home() {
 												);
 											})}
 											{/* Reset / Undo inside advanced container */}
-											<div className="absolute right-2 bottom-2 flex gap-2 p-0.5">
+											<div className="absolute right-0 bottom-0 flex gap-2 px-4.5 py-2">
 												<button
 													type="button"
 													onClick={handleReset}
