@@ -517,6 +517,13 @@ export default function Home() {
 					return copy;
 				});
 			}
+
+			// In Advanced mode, clearing should keep the inner row visible.
+			if (advancedMode) {
+				setForcedEmpty((prev) => ({ ...prev, [index]: true }));
+				setHideEmpty(false);
+			}
+
 			// after clearing, focus at start of this input
 			setTimeout(() => {
 				const ref = advancedMode
@@ -533,8 +540,12 @@ export default function Home() {
 		});
 	};
 
-	// Insert an empty line after the given index and focus the new input
+	// Insert an empty line after the given index and focus the new input.
+	// If the canonical `names` string was empty before insertion, mark the
+	// new row as forced visible so Advanced-mode auto-hide does not remove it.
 	const insertLineAfter = (index: number) => {
+		const wasEmpty = (names || "").trim() === "";
+
 		setNames((prev) => {
 			const lines = prev.split("\n");
 			lines.splice(index + 1, 0, "");
@@ -542,6 +553,12 @@ export default function Home() {
 			pushHistory(next);
 			return next;
 		});
+
+		if (wasEmpty) {
+			const newIndex = index + 1;
+			setForcedEmpty((prev) => ({ ...prev, [newIndex]: true }));
+			setHideEmpty(false);
+		}
 
 		setTimeout(() => {
 			const newIndex = index + 1;
@@ -571,6 +588,10 @@ export default function Home() {
 	const ICON_DIV_WIDTH = 70; // px; used to calculate input width (icons container)
 	const [hideEmpty, setHideEmpty] = useState(false);
 
+	// Track indices for which an empty advanced inner row should be shown even
+	// when the canonical `names` string is empty. Used to avoid auto-hide races.
+	const [forcedEmpty, setForcedEmpty] = useState<Record<number, boolean>>({});
+
 	// Delete a line entirely from the names list and focus the next sensible input
 	const deleteLine = (index: number) => {
 		setNames((prev) => {
@@ -590,6 +611,18 @@ export default function Home() {
 			const next = lines.join("\n");
 			// If no lines left after deletion, hide the empty input area
 			setHideEmpty(lines.length === 0);
+
+			// Shift forcedEmpty indices down for entries after the removed index
+			setForcedEmpty((prev) => {
+				const copy: Record<number, boolean> = {};
+				Object.keys(prev).forEach((k) => {
+					const num = Number(k);
+					if (isNaN(num)) return;
+					if (num < index) copy[num] = true;
+					else if (num > index) copy[num - 1] = true;
+				});
+				return copy;
+			});
 			pushHistory(next);
 			// focus next element after DOM updates
 			setTimeout(() => {
@@ -634,6 +667,20 @@ export default function Home() {
 		}
 
 		const newValue = kept.join("\n");
+
+		// Remap forcedEmpty indices to the compacted list so any intentionally
+		// visible empty advanced rows are preserved at their new indices.
+		setForcedEmpty((prev) => {
+			const newMap: Record<number, boolean> = {};
+			let writeIndex = 0;
+			for (let i = 0; i < lines.length; i++) {
+				if (i !== index && lines[i].trim() === "") continue;
+				if (prev[i]) newMap[writeIndex] = true;
+				writeIndex += 1;
+			}
+			return newMap;
+		});
+
 		setNames(newValue);
 
 		const newIndex = index - removedBefore;
@@ -1750,10 +1797,21 @@ export default function Home() {
 		return () => window.removeEventListener("resize", resizeCanvas);
 	}, [drawWheel]);
 
-	// Lines used for rendering lists: when names === "" we want zero rows
+	// Lines used for rendering lists. When `names` is empty we normally hide
+	// the placeholder row (when `hideEmpty`), but if the user has forced one
+	// or more empty advanced rows to be visible, we render those instead.
 	const renderLines = useMemo(() => {
-		return names === "" ? (hideEmpty ? [] : [""]) : names.split("\n");
-	}, [names, hideEmpty]);
+		if (names === "") {
+			const forcedKeys = Object.keys(forcedEmpty)
+				.map((k) => Number(k))
+				.filter((n) => !isNaN(n));
+			if (hideEmpty && forcedKeys.length === 0) return [];
+			if (forcedKeys.length === 0) return [""];
+			const maxIndex = forcedKeys.reduce((a, b) => Math.max(a, b), -1);
+			return Array.from({ length: Math.max(1, maxIndex + 1) }).map(() => "");
+		}
+		return names.split("\n");
+	}, [names, hideEmpty, forcedEmpty]);
 
 	// If we start with an empty list, focus the first input line automatically.
 	useEffect(() => {
@@ -1775,6 +1833,16 @@ export default function Home() {
 			}, 0);
 		}
 	}, [names, hideEmpty, advancedMode, renderLines]);
+
+	// When switching to Advanced mode, keep the empty area hidden unless the
+	// user has explicitly forced an empty inner row to be visible. This avoids
+	// promoting the Normal-mode empty placeholder into Advanced mode unintentionally.
+	useEffect(() => {
+		if (!advancedMode) return;
+		if ((names || "").trim() === "" && Object.keys(forcedEmpty).length === 0) {
+			setHideEmpty(true);
+		}
+	}, [advancedMode, names, forcedEmpty]);
 
 	// Helper to determine whether a pointer event occurred inside an existing
 	// line element. Traverses DOM ancestors from event.target up to the
@@ -2332,7 +2400,9 @@ export default function Home() {
 
 															<div
 																className={`${
-																	(text || "").trim() ? "flex" : "hidden"
+																	(text || "").trim() || forcedEmpty[idx]
+																		? "flex"
+																		: "hidden"
 																} items-center gap-3 absolute right-3 md:right-1`}
 																style={{ width: ICON_DIV_WIDTH }}
 															>
@@ -2500,7 +2570,7 @@ export default function Home() {
 															/>
 															<div
 																className={`${
-																	(text || "").trim()
+																	(text || "").trim() || forcedEmpty[idx]
 																		? "absolute flex"
 																		: "hidden"
 																} items-center gap-3 right-3 md:right-2`}
