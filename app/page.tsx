@@ -23,6 +23,7 @@ import {
 	Pencil,
 	Check,
 	X,
+	Trash2,
 	Shuffle,
 	ArrowUp,
 	ArrowDown,
@@ -245,6 +246,8 @@ export default function Home() {
 
 	// refs for advanced-mode per-line inputs, keyed by original index after render
 	const advancedInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
+	// refs for names-list per-line inputs (non-advanced mode)
+	const listInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
 	// simple undo history for textarea content
 	const historyRef = useRef<string[]>([names]);
 	const historyIndexRef = useRef<number>(0);
@@ -429,6 +432,7 @@ export default function Home() {
 	const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
 		const v = e.target.value;
 		// push new state into history
+		// push new state into history
 		pushHistory(v);
 		setNames(v);
 		// Sync includeMap: preserve existing include flags for matching trimmed names,
@@ -513,7 +517,95 @@ export default function Home() {
 					return copy;
 				});
 			}
+			// after clearing, focus at start of this input
+			setTimeout(() => {
+				const ref = advancedMode
+					? advancedInputRefs.current[index]
+					: listInputRefs.current[index];
+				if (ref) {
+					ref.focus();
+					ref.selectionStart = ref.selectionEnd = 0;
+				}
+				updateFocusedLine();
+				setControlsTick((t) => t + 1);
+			}, 0);
 			return lines.join("\n");
+		});
+	};
+
+	// Insert an empty line after the given index and focus the new input
+	const insertLineAfter = (index: number) => {
+		setNames((prev) => {
+			const lines = prev.split("\n");
+			lines.splice(index + 1, 0, "");
+			const next = lines.join("\n");
+			pushHistory(next);
+			return next;
+		});
+
+		setTimeout(() => {
+			const newIndex = index + 1;
+			const ref = advancedMode
+				? advancedInputRefs.current[newIndex]
+				: listInputRefs.current[newIndex];
+			if (ref) {
+				ref.focus();
+				const len = ref.value.length;
+				ref.selectionStart = ref.selectionEnd = len;
+			}
+			updateFocusedLine();
+			setControlsTick((t) => t + 1);
+		}, 0);
+	};
+
+	const handleKeyDownInsert = (
+		e: React.KeyboardEvent<HTMLInputElement>,
+		index: number
+	) => {
+		if (e.key === "Enter" && !e.shiftKey) {
+			e.preventDefault();
+			insertLineAfter(index);
+		}
+	};
+
+	const ICON_DIV_WIDTH = 70; // px; used to calculate input width (icons container)
+	const [hideEmpty, setHideEmpty] = useState(false);
+
+	// Delete a line entirely from the names list and focus the next sensible input
+	const deleteLine = (index: number) => {
+		setNames((prev) => {
+			const lines = prev.split("\n");
+			const removed = (lines[index] || "").trim();
+			if (index >= 0 && index < lines.length) {
+				lines.splice(index, 1);
+			}
+			// remove includeMap entry for removed name
+			if (removed) {
+				setIncludeMap((prevMap) => {
+					const copy = { ...prevMap };
+					delete copy[removed];
+					return copy;
+				});
+			}
+			const next = lines.join("\n");
+			// If no lines left after deletion, hide the empty input area
+			setHideEmpty(lines.length === 0);
+			pushHistory(next);
+			// focus next element after DOM updates
+			setTimeout(() => {
+				const newIndex = Math.min(index, Math.max(0, lines.length - 1));
+				const ref = advancedMode
+					? advancedInputRefs.current[newIndex]
+					: listInputRefs.current[newIndex];
+				if (ref) {
+					ref.focus();
+					const len = ref.value.length;
+					ref.selectionStart = ref.selectionEnd = len;
+				}
+				updateFocusedLine();
+				setControlsTick((t) => t + 1);
+			}, 0);
+			return next;
 		});
 	};
 
@@ -548,6 +640,43 @@ export default function Home() {
 		// Restore focus to the corresponding input after DOM updates
 		setTimeout(() => {
 			const el = advancedInputRefs.current[newIndex];
+			if (el) {
+				el.focus();
+				const len = el.value.length;
+				el.selectionStart = el.selectionEnd = len;
+			}
+			setFocusedLine(newIndex);
+			setControlsTick((t) => t + 1);
+		}, 0);
+	};
+
+	// When a names-list input (non-advanced mode) receives focus, remove any other
+	// empty lines (whitespace-only) but keep the focused line. Mirrors
+	// `handleAdvancedFocus` behavior for the names-list view.
+	const handleListFocus = (index: number) => {
+		const lines = names.split("\n");
+		const emptyOthers = lines.some((l, i) => i !== index && l.trim() === "");
+		if (!emptyOthers) {
+			setFocusedLine(index);
+			setControlsTick((t) => t + 1);
+			return;
+		}
+
+		const removedBefore = lines
+			.slice(0, index)
+			.filter((l) => l.trim() === "").length;
+		const kept: string[] = [];
+		for (let i = 0; i < lines.length; i++) {
+			if (i !== index && lines[i].trim() === "") continue;
+			kept.push(lines[i]);
+		}
+
+		const newValue = kept.join("\n");
+		setNames(newValue);
+
+		const newIndex = index - removedBefore;
+		setTimeout(() => {
+			const el = listInputRefs.current[newIndex];
 			if (el) {
 				el.focus();
 				const len = el.value.length;
@@ -1621,6 +1750,10 @@ export default function Home() {
 		return () => window.removeEventListener("resize", resizeCanvas);
 	}, [drawWheel]);
 
+	// Lines used for rendering lists: when names === "" we want zero rows
+	const renderLines =
+		names === "" ? (hideEmpty ? [] : [""]) : names.split("\n");
+
 	return (
 		<div className="min-h-screen">
 			{/* When spinning, render a full-screen overlay to block all clicks */}
@@ -1712,18 +1845,6 @@ export default function Home() {
 					background: rgba(0, 0, 0, 0.2) !important;
 				}
 			`}</style>
-			{/* <div
-				className="bg-red-500 h-[200px] w-[200px]"
-				onClick={(e) => {
-					e.currentTarget.requestFullscreen();
-				}} 
-			>
-				{" "}
-				<button>Full Screen</button>
-				<button onClick={() => document.exitFullscreen()}>
-					Exit fullscreen
-				</button>
-			</div> */}
 			<Navbar
 				onTimerChange={handleTimerChange}
 				onBackgroundChange={handleBackgroundChange}
@@ -2059,85 +2180,112 @@ export default function Home() {
 										<span className="text-sm">Advanced</span>
 									</label>
 								</div>
+
+								{/* Normal mode  */}
 								<div className="relative flex-1 w-full">
 									{!advancedMode ? (
-										<>
-											<textarea
-												id="names-input"
-												ref={(el) => {
-													textareaRef.current = el;
-												}}
-												value={names}
-												onChange={(e) => handleTextareaChange(e)}
-												// placeholder="Enter names, one per line"
-												rows={10}
-												onClick={updateFocusedLine}
-												onKeyUp={updateFocusedLine}
-												onKeyDown={handleKeyDownInTextarea}
-												onSelect={updateFocusedLine}
-												onScroll={() => setControlsTick((t) => t + 1)}
-												className="w-full whitespace-pre min-h-[400px] rounded-[7px] bg-gray-50 text-gray-800 resize-none text-[18px] md:text-[19px] font-bold border-4 shadow-inner border-gray-300 focus-visible:ring-0 focus-visible:border-blue-300 px-3 pt-3 pb-8 leading-7"
-											/>
-
-											{/* Per-line controls and overlays */}
-											{names.split("\n").map((ln, idx) => {
-												const name = ln.trim();
-												if (!name) return null;
-												const isIncluded = includeMap[name] !== false;
+										<div
+											role="region"
+											aria-label="Names list"
+											className="w-full whitespace-pre rounded-[7px] bg-gray-50 text-gray-800 overflow-auto text-[18px] md:text-[19px] font-bold border-4 shadow-inner border-gray-300 px-3 pt-3 pb-8 leading-7 relative"
+											style={{
+												height: Math.min(
+													900,
+													Math.max(600, names.split("\n").length * 42 + 24)
+												),
+												overflowY: "auto",
+											}}
+										>
+											{renderLines.map((ln, idx) => {
+												const text = ln;
+												const isIncluded = (text || "").trim()
+													? includeMap[(text || "").trim()] !== false
+													: false;
 												return (
-													<div key={`line-wrap-${idx}-${controlsTick}`}>
-														{/* Overlay to show the line text with a strike-through when unchecked. Positioned over textarea text. */}
-														{!isIncluded && (
-															<div
-																key={`line-overlay-${idx}-${controlsTick}`}
-																className="absolute left-4  pointer-events-none text-[18px] md:text-[19px] decoration-red-400 font-bold text-gray-400 leading-7 line-through"
-																style={{
-																	top:
-																		calcIconTop(textareaRef.current, idx) +
-																		"px",
-																}}
-															>
-																{name}
-															</div>
-														)}
-														<div
-															key={`line-controls-${idx}-${controlsTick}`}
-															className="absolute md:right-6 right-3 flex items-center gap-2"
-															style={{
-																top:
-																	calcIconTop(textareaRef.current, idx) + "px",
+													<div
+														key={`line-div-${idx}`}
+														className="flex items-center justify-between gap-2 mb-1 py-1 w-full flex-nowrap"
+													>
+														<input
+															ref={(el) => {
+																listInputRefs.current[idx] = el;
 															}}
+															onFocus={() => handleListFocus(idx)}
+															onKeyDown={(e) => handleKeyDownInsert(e, idx)}
+															type="text"
+															value={text || ""}
+															onChange={(e) => editLine(idx, e.target.value)}
+															aria-label={`Edit name for line ${idx + 1}`}
+															style={{
+																width: `calc(100% - ${ICON_DIV_WIDTH + 10}px)`,
+															}}
+															className={`mr-3 truncate text-[18px] md:text-[19px] font-bold focus:outline-none ${
+																!isIncluded
+																	? "line-through decoration-red-400 text-gray-400"
+																	: ""
+															}`}
+															maxLength={50}
+														/>
+														<div
+															className="flex items-center gap-3 absolute md:right-7 right-6"
+															style={{ width: ICON_DIV_WIDTH }}
 														>
-															{/* Checkbox: keep textarea focused by preventing default on mouseDown,
-																but toggle inclusion onClick so the first click takes effect. */}
 															<input
 																type="checkbox"
-																aria-label={`Include ${name} on wheel`}
-																onMouseDown={(e) => e.preventDefault()}
+																aria-label={`Include ${(
+																	text || ""
+																).trim()} on wheel`}
+																onPointerDown={(e) => e.stopPropagation()}
 																checked={isIncluded}
 																onChange={(e) =>
 																	handleToggleInclude(idx, e.target.checked)
 																}
 																className="w-5 h-5 bg-white rounded"
 															/>
-
 															<button
 																type="button"
-																onPointerDown={(e) => {
+																onPointerDown={(e) => e.stopPropagation()}
+																onClick={(e) => {
 																	e.preventDefault();
-																	handleClearLine(idx);
+																	e.stopPropagation();
+																	setHideEmpty(false);
+																	clearLineDirect(idx);
+																	// focus the input after clearing
+																	const ref = advancedMode
+																		? advancedInputRefs.current[idx]
+																		: listInputRefs.current[idx];
+																	if (ref) {
+																		try {
+																			ref.focus();
+																			ref.selectionStart = ref.selectionEnd = 0;
+																		} catch {}
+																	}
 																}}
 																aria-label={`Clear line ${idx + 1}`}
-																className="w-5 h-5 bg-white/90 rounded shadow-md flex items-center justify-center hover:bg-white p-0"
+																className="w-6 h-6 bg-white/90 rounded shadow-md flex items-center justify-center hover:bg-white p-0"
 															>
 																<X size={18} color="#404040" />
+															</button>
+															<button
+																type="button"
+																onPointerDown={(e) => e.stopPropagation()}
+																onClick={(e) => {
+																	e.preventDefault();
+																	e.stopPropagation();
+																	setHideEmpty(false);
+																	deleteLine(idx);
+																}}
+																aria-label={`Delete line ${idx + 1}`}
+																className="w-6 h-6 bg-red-100 text-red-600 rounded shadow-md flex items-center justify-center hover:bg-red-200 p-0"
+															>
+																<Trash2 size={16} />
 															</button>
 														</div>
 													</div>
 												);
 											})}
 
-											{/* Reset / Undo buttons placed bottom-right inside textarea wrapper (now relative to textarea only) */}
+											{/* Reset / Undo buttons */}
 											<div className="absolute right-2 bottom-2 flex gap-2 p-0.5">
 												<button
 													type="button"
@@ -2155,7 +2303,7 @@ export default function Home() {
 													Undo
 												</button>
 											</div>
-										</>
+										</div>
 									) : (
 										/* Advanced mode: render same-size interactive div */
 										<div
@@ -2174,7 +2322,7 @@ export default function Home() {
 												overflowY: "auto",
 											}}
 										>
-											{names.split("\n").map((ln, idx) => {
+											{renderLines.map((ln, idx) => {
 												const text = ln;
 												const isIncluded = (text || "").trim()
 													? includeMap[(text || "").trim()] !== false
@@ -2186,11 +2334,11 @@ export default function Home() {
 														style={{
 															backgroundColor:
 																idx % 2 === 0
-																	? "rgba(0,0,0,0.06)"
+																	? "rgba(0,0,0,0.03)"
 																	: "transparent",
 														}}
 													>
-														{/* First inner div: mirrors line content and controls */}
+														{/* First inner div: input + checkbox + clear */}
 														<div className="flex items-center justify-between w-full relative pl-2">
 															<input
 																type="text"
@@ -2198,22 +2346,32 @@ export default function Home() {
 																	advancedInputRefs.current[idx] = el;
 																}}
 																onFocus={() => handleAdvancedFocus(idx)}
+																onKeyDown={(e) => handleKeyDownInsert(e, idx)}
 																value={text || ""}
 																onChange={(e) => editLine(idx, e.target.value)}
 																aria-label={`Edit name for line ${idx + 1}`}
-																className={`flex-1 mr-3 bg-transparent truncate text-[18px] md:text-[19px] font-bold focus:outline-none ${
+																style={{
+																	width: `calc(100% - ${
+																		ICON_DIV_WIDTH + 10
+																	}px)`,
+																}}
+																className={`mr-3 bg-transparent truncate text-[18px] md:text-[19px] font-bold focus:outline-none ${
 																	!isIncluded
 																		? "line-through decoration-red-400 text-gray-400"
 																		: ""
 																}`}
+																maxLength={50}
 															/>
-															<div className="absolute flex items-center gap-2 right-1">
+															<div
+																className="absolute flex items-center gap-3 right-1"
+																style={{ width: ICON_DIV_WIDTH }}
+															>
 																<input
 																	type="checkbox"
 																	aria-label={`Include ${(
 																		text || ""
 																	).trim()} on wheel`}
-																	onMouseDown={(e) => e.preventDefault()}
+																	onPointerDown={(e) => e.stopPropagation()}
 																	checked={isIncluded}
 																	onChange={(e) =>
 																		handleToggleInclude(idx, e.target.checked)
@@ -2222,11 +2380,41 @@ export default function Home() {
 																/>
 																<button
 																	type="button"
-																	onClick={() => clearLineDirect(idx)}
+																	onPointerDown={(e) => e.stopPropagation()}
+																	onClick={(e) => {
+																		e.preventDefault();
+																		e.stopPropagation();
+																		setHideEmpty(false);
+																		clearLineDirect(idx);
+																		const ref = advancedMode
+																			? advancedInputRefs.current[idx]
+																			: listInputRefs.current[idx];
+																		if (ref) {
+																			try {
+																				ref.focus();
+																				ref.selectionStart =
+																					ref.selectionEnd = 0;
+																			} catch {}
+																		}
+																	}}
 																	aria-label={`Clear line ${idx + 1}`}
 																	className="w-6 h-6 bg-white/90 rounded shadow-md flex items-center justify-center hover:bg-white p-0"
 																>
 																	<X size={18} color="#404040" />
+																</button>
+																<button
+																	type="button"
+																	onPointerDown={(e) => e.stopPropagation()}
+																	onClick={(e) => {
+																		e.preventDefault();
+																		e.stopPropagation();
+																		setHideEmpty(false);
+																		deleteLine(idx);
+																	}}
+																	aria-label={`Delete line ${idx + 1}`}
+																	className="w-6 h-6 bg-red-100 text-red-600 rounded shadow-md flex items-center justify-center hover:bg-red-200 p-0"
+																>
+																	<Trash2 size={16} />
 																</button>
 															</div>
 														</div>
