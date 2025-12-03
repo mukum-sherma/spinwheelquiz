@@ -881,6 +881,33 @@ export default function Home() {
 		};
 	}, []);
 
+	// Toggle the `spinning-block` class on <body> to globally disable pointer-events
+	useEffect(() => {
+		if (typeof document === "undefined") return;
+		if (spinning) document.body.classList.add("spinning-block");
+		else document.body.classList.remove("spinning-block");
+
+		return () => {
+			document.body.classList.remove("spinning-block");
+		};
+	}, [spinning]);
+
+	// Ensure the cursor shows as `wait` while spinning even when many elements
+	// have `pointer-events: none`. Store and restore the previous body cursor.
+	useEffect(() => {
+		if (typeof document === "undefined") return;
+		const prev = document.body.style.cursor;
+		if (spinning) {
+			document.body.style.cursor = "wait";
+		} else {
+			document.body.style.cursor = prev || "";
+		}
+
+		return () => {
+			document.body.style.cursor = prev || "";
+		};
+	}, [spinning]);
+
 	// Update wheel spin sound when selection changes
 	useEffect(() => {
 		if (spinBuffersRef.current && spinSound) {
@@ -1916,12 +1943,17 @@ export default function Home() {
 
 	return (
 		<div className="min-h-screen">
-			{/* When spinning, render a full-screen overlay to block all clicks */}
+			{/* Global rule: when spinning, add `spinning-block` to body so
+			   pointer-events are disabled for all elements except those with
+			   the `allow-fullscreen` class. This avoids z-index/stacking issues. */}
+			{/* When spinning, render a full-screen overlay visually, but don't intercept pointer events
+				— we will disable pointer-events on the main container instead and allow the fullscreen
+				button to remain interactive via pointer-events-auto on that button. */}
 			{spinning && (
 				<div
 					aria-hidden="true"
-					className="fixed inset-0 z-50 bg-transparent pointer-events-auto cursor-wait"
-					// stop propagation to be safe
+					className="fixed inset-0 z-50 bg-transparent pointer-events-none cursor-wait"
+					// stop propagation to be safe (no-op when pointer-events-none)
 					onClick={(e) => e.stopPropagation()}
 				/>
 			)}
@@ -2005,6 +2037,23 @@ export default function Home() {
 					background: rgba(0, 0, 0, 0.2) !important;
 				}
 			`}</style>
+			<style global jsx>{`
+				body.spinning-block * {
+					pointer-events: none !important;
+					cursor: wait !important;
+				}
+				/* Make the fullscreen control interactive and show a pointer cursor */
+				body.spinning-block .allow-fullscreen {
+					pointer-events: auto !important;
+					cursor: pointer !important;
+				}
+				/* Ensure any children of the fullscreen control also show pointer */
+				body.spinning-block .allow-fullscreen * {
+					cursor: wait !important;
+				}
+			`}</style>
+
+			{/* Add/remove body class when spinning so the global CSS takes effect (handled in effect below) */}
 			<Navbar
 				onTimerChange={handleTimerChange}
 				onBackgroundChange={handleBackgroundChange}
@@ -2017,7 +2066,7 @@ export default function Home() {
 				winningBuffersRef={winningBuffersRef}
 				spinBuffersRef={spinBuffersRef}
 			/>
-			<div className="container mx-auto py-6">
+			<div className={`container mx-auto py-6`}>
 				<main className="flex md:flex-row flex-col gap-1">
 					<section
 						id="wheel"
@@ -2090,7 +2139,7 @@ export default function Home() {
 							{/* Fullscreen button - only on md+ screens */}
 							<button
 								onClick={toggleFullscreen}
-								className="hidden md:flex relative z-60 md:z-1 items-center gap-2 bg-black/70 hover:bg-black/90 text-white px-3 py-2 rounded-lg transition-all duration-200 shadow-lg"
+								className="hidden md:flex relative z-60 md:z-1 items-center gap-2 bg-black/70 hover:bg-black/90 text-white px-3 py-2 rounded-lg transition-all duration-200 shadow-lg pointer-events-auto allow-fullscreen"
 								aria-label={
 									isFullscreen ? "Exit fullscreen" : "Enter fullscreen"
 								}
@@ -2196,7 +2245,10 @@ export default function Home() {
 											onClick={() => setShowDialog(false)}
 											aria-label="Close dialog"
 										>
-											<X size={20} />
+											<X
+												size={40}
+												className="text-yellow-900 hover:text-yellow-400"
+											/>
 										</Button>
 									</div>
 									<div>
@@ -2867,7 +2919,10 @@ export default function Home() {
 									onClick={() => setShowDialog(false)}
 									aria-label="Close dialog"
 								>
-									<X size={20} />
+									<X
+										size={20}
+										className="text-yellow-900 hover:text-yellow-400"
+									/>
 								</Button>
 							</div>
 							<div>
