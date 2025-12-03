@@ -3160,7 +3160,7 @@ export default function Home() {
 															</div>
 														</div>
 														{/* Second inner div: palette button */}
-														<div>
+														<div className="flex gap-2">
 															<button
 																type="button"
 																className="flex items-center gap-2 px-3 py-1 rounded shadow"
@@ -3189,7 +3189,7 @@ export default function Home() {
 
 															<button
 																type="button"
-																className="flex items-center gap-2 px-3 py-1 rounded shadow"
+																className="flex items-center gap-2 px-3 py-1 rounded shadow bg-blue-200"
 																onClick={(e) => {
 																	e.preventDefault();
 																	e.stopPropagation();
@@ -3200,7 +3200,7 @@ export default function Home() {
 																	text || ""
 																).trim()}`}
 															>
-																<ImageIcon size={16} />
+																<ImageIcon size={16} className=""/>
 																<span className="text-xs">Image</span>
 															</button>
 														</div>
