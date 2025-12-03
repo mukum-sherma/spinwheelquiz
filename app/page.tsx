@@ -554,7 +554,10 @@ export default function Home() {
 			return next;
 		});
 
-		if (wasEmpty) {
+		// If we inserted into an entirely empty names string OR we're in
+		// Advanced mode, mark the new row as a forced-empty so the
+		// advanced-controls div is rendered even when the text is empty.
+		if (wasEmpty || advancedMode) {
 			const newIndex = index + 1;
 			setForcedEmpty((prev) => ({ ...prev, [newIndex]: true }));
 			setHideEmpty(false);
@@ -2400,9 +2403,7 @@ export default function Home() {
 
 															<div
 																className={`${
-																	(text || "").trim() || forcedEmpty[idx]
-																		? "flex"
-																		: "hidden"
+																	(text || "").trim() ? "flex" : "hidden"
 																} items-center gap-3 absolute right-3 md:right-1`}
 																style={{ width: ICON_DIV_WIDTH }}
 															>
@@ -2508,7 +2509,11 @@ export default function Home() {
 											onPointerDown={(e) => {
 												if (isEventInsideLine(e)) return;
 												if (renderLines.length === 0) {
+													// Reveal the empty advanced area and mark
+													// the first row as forced-visible so the
+													// icon/controls div renders immediately.
 													setHideEmpty(false);
+													setForcedEmpty((prev) => ({ ...prev, 0: true }));
 													e.stopPropagation();
 													return;
 												}
