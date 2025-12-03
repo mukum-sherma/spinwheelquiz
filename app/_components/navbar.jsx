@@ -42,6 +42,7 @@ import {
 	Timer,
 	Trophy,
 	Volume2,
+	UploadCloud,
 } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -307,6 +308,27 @@ const Navbar = ({
 			// ignore
 		}
 	}, []);
+
+	// Hidden file input for uploading a fullpage background image
+	const uploadBgInputRef = useRef(null);
+	const handleBackgroundUpload = useCallback(
+		(e) => {
+			const f = e.target.files?.[0];
+			if (!f) return;
+			try {
+				const url = URL.createObjectURL(f);
+				onBackgroundChange?.({
+					type: "image",
+					value: url,
+					uploaded: true,
+					fullpage: true,
+				});
+			} catch (err) {
+				console.warn("Background upload failed:", err);
+			}
+		},
+		[onBackgroundChange]
+	);
 	// timer/ref used to poll for the color input mounting so we can open picker
 	const colorPickerPollRef = useRef(null);
 
@@ -488,9 +510,30 @@ const Navbar = ({
 							</MenubarSubTrigger>
 							<MenubarSubContent className="w-[80%] md:w-[700px] max-h-[400px] overflow-y-auto">
 								<div className="p-3">
-									<p className="text-muted-foreground text-xs uppercase tracking-wide mb-3">
-										Choose background
-									</p>
+									<div className="flex items-center justify-between">
+										<p className="text-muted-foreground text-xs uppercase tracking-wide mb-3">
+											Choose background
+										</p>
+										<div>
+											<input
+												ref={uploadBgInputRef}
+												type="file"
+												accept="image/*"
+												onChange={handleBackgroundUpload}
+												style={{ display: "none" }}
+											/>
+											<button
+												type="button"
+												onClick={() => uploadBgInputRef.current?.click()}
+												className="flex mt-[-11px] items-center gap-2 px-3 py-1 text-[13px] font-medium rounded-full text-xs text-white shadow justify-start"
+												style={{ background: "#008cbd" }}
+												aria-label="Upload background image"
+											>
+												<UploadCloud className="h-4 w-4" />
+												<span>Upload Image</span>
+											</button>
+										</div>
+									</div>
 									{loadingImages ? (
 										<div className="flex items-center justify-center py-8">
 											<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -548,6 +591,7 @@ const Navbar = ({
 			handleImageClick,
 			handleResetBackground,
 			handleOpenColorPicker,
+			handleBackgroundUpload,
 		]
 	);
 
@@ -797,9 +841,32 @@ const Navbar = ({
 													</AccordionTrigger>
 													<AccordionContent className="px-2 pb-2">
 														<div className="p-3">
-															<p className="text-muted-foreground text-xs uppercase tracking-wide mb-3">
-																Choose background
-															</p>
+															<div className="flex items-center justify-between">
+																<p className="text-muted-foreground text-xs uppercase tracking-wide mb-3">
+																	Choose background
+																</p>
+																<div>
+																	<input
+																		ref={uploadBgInputRef}
+																		type="file"
+																		accept="image/*"
+																		onChange={handleBackgroundUpload}
+																		style={{ display: "none" }}
+																	/>
+																	<button
+																		type="button"
+																		onClick={() =>
+																			uploadBgInputRef.current?.click()
+																		}
+																		className="flex items-center gap-2 px-3 py-1 text-[13px] font-medium rounded-full text-xs text-white shadow justify-start"
+																		style={{ background: "#008cbd" }}
+																		aria-label="Upload background image"
+																	>
+																		<UploadCloud className="h-4 w-4" />
+																		<span>Upload Image</span>
+																	</button>
+																</div>
+															</div>
 															{loadingImages ? (
 																<div className="flex items-center justify-center py-8">
 																	<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>

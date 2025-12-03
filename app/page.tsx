@@ -29,6 +29,7 @@ import {
 	ArrowDown,
 	LoaderPinwheel,
 	Palette,
+	UploadCloud,
 } from "lucide-react";
 import Image from "next/image";
 import {
@@ -1035,6 +1036,27 @@ export default function Home() {
 	const [entryImageFiles, setEntryImageFiles] = useState<string[]>([]);
 	const [entryLoadingImages, setEntryLoadingImages] = useState(true);
 
+	// Upload helper: hidden file input and blob URL tracking for uploaded wheel image
+	const uploadInputRef = useRef<HTMLInputElement | null>(null);
+	const uploadedBlobUrlRef = useRef<string | null>(null);
+	// Track uploaded fullpage background blob URL so we can revoke when replaced
+	const uploadedBgUrlRef = useRef<string | null>(null);
+
+	const onWheelImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+		const f = e.target.files?.[0];
+		if (!f) return;
+		// revoke previous blob URL if any
+		if (uploadedBlobUrlRef.current) {
+			try {
+				URL.revokeObjectURL(uploadedBlobUrlRef.current);
+			} catch {}
+		}
+		const url = URL.createObjectURL(f);
+		uploadedBlobUrlRef.current = url;
+		// Use uploaded image as wheel image directly
+		setWheelImageSrc(url);
+	};
+
 	useEffect(() => {
 		let mounted = true;
 		setEntryLoadingImages(true);
@@ -1137,10 +1159,26 @@ export default function Home() {
 				console.warn("Failed to compute contrast for color background:", err);
 			}
 		} else if (backgroundSelection?.type === "image") {
-			// If the selected image is a fullpage image, set the body background.
-			// If it's a wheel image, use it to fill wheel partitions.
+			// If the selected image is a fullpage image (or an uploaded blob URL),
+			// set the body background. If it's a wheel image, use it to fill wheel partitions.
 			const val = backgroundSelection.value || "";
-			if (val.includes("/images/fullpage/")) {
+			const isUploadedFullpage = val && val.startsWith("blob:");
+			// Revoke any previous uploaded background blob URL when replacing
+			if (
+				uploadedBgUrlRef.current &&
+				uploadedBgUrlRef.current !== val &&
+				uploadedBgUrlRef.current.startsWith("blob:")
+			) {
+				try {
+					URL.revokeObjectURL(uploadedBgUrlRef.current);
+				} catch {}
+				uploadedBgUrlRef.current = null;
+			}
+
+			if (val.includes("/images/fullpage/") || isUploadedFullpage) {
+				// If this was an uploaded fullpage background, remember it so we can
+				// revoke it later when replaced.
+				if (isUploadedFullpage) uploadedBgUrlRef.current = val;
 				// Apply as body background
 				document.body.style.background = "";
 				document.body.style.backgroundImage = `url(${val})`;
@@ -1198,6 +1236,17 @@ export default function Home() {
 			document.body.style.backgroundSize = "";
 			document.body.style.backgroundPosition = "";
 			document.body.style.backgroundRepeat = "";
+
+			// Revoke any uploaded background blob URL on unmount
+			if (
+				uploadedBgUrlRef.current &&
+				uploadedBgUrlRef.current.startsWith("blob:")
+			) {
+				try {
+					URL.revokeObjectURL(uploadedBgUrlRef.current);
+				} catch {}
+				uploadedBgUrlRef.current = null;
+			}
 		};
 	}, []);
 	// Build names list from textarea but respect includeMap (names mapped by trimmed value)
@@ -2239,9 +2288,33 @@ export default function Home() {
 
 										<DropdownMenuContent className="w-[360px] max-h-[320px] overflow-y-auto">
 											<div className="p-3">
-												<p className="text-muted-foreground text-xs uppercase tracking-wide mb-3">
-													Choose wheel image
-												</p>
+												<div className="flex items-center justify-between ">
+													<p className="text-muted-foreground text-xs uppercase tracking-wide mb-3">
+														Choose wheel image
+													</p>
+													<div>
+														<input
+															ref={uploadInputRef}
+															type="file"
+															accept="image/*"
+															onChange={onWheelImageUpload}
+															style={{ display: "none" }}
+														/>
+														<button
+															type="button"
+															onClick={() => uploadInputRef.current?.click()}
+															className="flex mt-[-11px] items-center gap-2 px-3 py-1 text-[13px] font-medium rounded-full text-xs text-white shadow justify-start"
+															style={{
+																background: "#008cbd",
+																...(getButtonContrastStyles() || {}),
+															}}
+															aria-label="Upload wheel image"
+														>
+															<UploadCloud size={16} />
+															<span>Upload Image</span>
+														</button>
+													</div>
+												</div>
 												{entryLoadingImages ? (
 													<div className="flex items-center justify-center py-8">
 														<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
