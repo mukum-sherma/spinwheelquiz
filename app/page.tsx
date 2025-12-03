@@ -30,6 +30,7 @@ import {
 	LoaderPinwheel,
 	Palette,
 	UploadCloud,
+	Image as ImageIcon,
 } from "lucide-react";
 import Image from "next/image";
 import {
@@ -47,7 +48,6 @@ const lexendDeca = Lexend_Deca({
 	subsets: ["latin"],
 	weight: ["400", "700"],
 });
-
 const masque = localFont({
 	src: "./_fonts/masque.ttf",
 	variable: "--font-masque",
@@ -1217,6 +1217,38 @@ export default function Home() {
 	const [entryImageFiles, setEntryImageFiles] = useState<string[]>([]);
 	const [entryLoadingImages, setEntryLoadingImages] = useState(true);
 
+	// Per-partition images: blob URLs stored by index and bitmap cache for drawing
+	const [partitionImages, setPartitionImages] = useState<
+		Record<number, string>
+	>({});
+	const partitionImageBitmapRefs = useRef<Record<number, ImageBitmap | null>>(
+		{}
+	);
+	const partitionImageBlobUrlsRef = useRef<Record<number, string | null>>({});
+
+	// Hidden file input for per-partition image selection
+	const entryFileInputRef = useRef<HTMLInputElement | null>(null);
+	const pendingPartitionIndexForFileRef = useRef<number | null>(null);
+
+	const onEntryFileSelected = async (
+		e: React.ChangeEvent<HTMLInputElement>
+	) => {
+		const f = e.target.files?.[0];
+		if (!f) return;
+		const idx = pendingPartitionIndexForFileRef.current;
+		if (idx == null) return;
+		// revoke previous blob for this index
+		try {
+			const prev = partitionImageBlobUrlsRef.current[idx];
+			if (prev) URL.revokeObjectURL(prev);
+		} catch {}
+		const url = URL.createObjectURL(f);
+		partitionImageBlobUrlsRef.current[idx] = url;
+		setPartitionImages((prev) => ({ ...prev, [idx]: url }));
+		pendingPartitionIndexForFileRef.current = null;
+		// load bitmap will be handled by effect below which watches partitionImages
+	};
+
 	// Upload helper: hidden file input and blob URL tracking for uploaded wheel image
 	const uploadInputRef = useRef<HTMLInputElement | null>(null);
 	const uploadedBlobUrlRef = useRef<string | null>(null);
@@ -1560,9 +1592,30 @@ export default function Home() {
 			ctx.arc(centerX, centerY, radius, startAngle, endAngle);
 			ctx.closePath();
 
-			// If a wheel image is selected and loaded, draw it clipped to the sector.
-			// Otherwise fall back to the color fill.
-			if (wheelImageBitmapRef.current) {
+			// If a per-partition image is present, draw it clipped to this sector (object-scale-down).
+			const pImg = partitionImageBitmapRefs.current[index];
+			if (pImg) {
+				ctx.save();
+				ctx.clip();
+				try {
+					// place image centered along the sector radius (below the name text)
+					const midAngle = startAngle + anglePerSegment / 2;
+					const maxW = radius * 0.6;
+					const maxH = radius * 0.6;
+					const iw = pImg.width;
+					const ih = pImg.height;
+					const scale = Math.min(maxW / iw, maxH / ih, 1);
+					const dw = iw * scale;
+					const dh = ih * scale;
+					const imgCenterDist = radius * 0.78; // place toward outer area under the text
+					const cx = centerX + Math.cos(midAngle) * imgCenterDist - dw / 2;
+					const cy = centerY + Math.sin(midAngle) * imgCenterDist - dh / 2;
+					ctx.drawImage(pImg, cx, cy, dw, dh);
+				} catch (e) {
+					console.warn("Failed to draw partition image:", e);
+				}
+				ctx.restore();
+			} else if (wheelImageBitmapRef.current) {
 				ctx.save();
 				ctx.clip();
 				try {
@@ -1873,6 +1926,36 @@ export default function Home() {
 			mounted = false;
 		};
 	}, [wheelImageSrc]);
+
+	// Load any partition images into ImageBitmaps for faster drawing
+	useEffect(() => {
+		let mounted = true;
+		const toLoad: Array<[number, string]> = [];
+		Object.keys(partitionImages).forEach((k) => {
+			const idx = Number(k);
+			const src = partitionImages[idx];
+			if (!src) return;
+			if (!partitionImageBitmapRefs.current[idx]) toLoad.push([idx, src]);
+		});
+		if (toLoad.length === 0) return;
+		(async () => {
+			for (const [idx, src] of toLoad) {
+				try {
+					const res = await fetch(src);
+					const blob = await res.blob();
+					const bmp = await createImageBitmap(blob);
+					if (!mounted) break;
+					partitionImageBitmapRefs.current[idx] = bmp;
+					drawWheelRef.current?.();
+				} catch (err) {
+					console.warn("Failed to load partition image", src, err);
+				}
+			}
+		})();
+		return () => {
+			mounted = false;
+		};
+	}, [partitionImages]);
 
 	const determineWinner = useCallback(
 		(finalRotation: number) => {
@@ -2341,6 +2424,15 @@ export default function Home() {
 					}
 				}}
 				aria-label="Select partition color"
+			/>
+			{/* Hidden file input for per-partition Image selection (triggered by Image button) */}
+			<input
+				ref={entryFileInputRef}
+				type="file"
+				accept="image/*"
+				style={{ display: "none" }}
+				onChange={onEntryFileSelected}
+				aria-hidden="true"
 			/>
 			<div className={`container mx-auto py-6`}>
 				<main className="flex md:flex-row flex-col gap-1">
@@ -3093,6 +3185,23 @@ export default function Home() {
 																	color={paletteBtnTextColor}
 																/>
 																<span className="text-xs">Color</span>
+															</button>
+
+															<button
+																type="button"
+																className="flex items-center gap-2 px-3 py-1 rounded shadow"
+																onClick={(e) => {
+																	e.preventDefault();
+																	e.stopPropagation();
+																	pendingPartitionIndexForFileRef.current = idx;
+																	entryFileInputRef.current?.click();
+																}}
+																aria-label={`Select image for ${(
+																	text || ""
+																).trim()}`}
+															>
+																<ImageIcon size={16} />
+																<span className="text-xs">Image</span>
 															</button>
 														</div>
 													</div>
