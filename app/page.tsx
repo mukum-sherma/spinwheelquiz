@@ -30,7 +30,7 @@ import {
 	LoaderPinwheel,
 	Palette,
 	UploadCloud,
-	Image as ImageIcon,
+	Percent,
 } from "lucide-react";
 import Image from "next/image";
 import {
@@ -129,7 +129,18 @@ export default function Home() {
 
 	const handlePaletteSelect = useCallback(
 		(idx: number, color: string) => {
-			setPartitionColors((prev) => ({ ...prev, [idx]: color }));
+			const id = lineIdsRef.current?.[idx];
+			if (id) {
+				setPartitionColorsById((prev) => ({ ...prev, [id]: color }));
+				// Also remove any legacy index-keyed color for this index
+				setPartitionColors((prev) => {
+					const copy = { ...prev };
+					delete copy[idx];
+					return copy;
+				});
+			} else {
+				setPartitionColors((prev) => ({ ...prev, [idx]: color }));
+			}
 			drawWheelRef.current?.();
 			closePalette();
 		},
@@ -138,11 +149,25 @@ export default function Home() {
 
 	const handlePaletteReset = useCallback(
 		(idx: number) => {
-			setPartitionColors((prev) => {
-				const copy = { ...prev };
-				delete copy[idx];
-				return copy;
-			});
+			const id = lineIdsRef.current?.[idx];
+			if (id) {
+				setPartitionColorsById((prev) => {
+					const copy = { ...prev };
+					delete copy[id];
+					return copy;
+				});
+				setPartitionColors((prev) => {
+					const copy = { ...prev };
+					delete copy[idx];
+					return copy;
+				});
+			} else {
+				setPartitionColors((prev) => {
+					const copy = { ...prev };
+					delete copy[idx];
+					return copy;
+				});
+			}
 			drawWheelRef.current?.();
 			closePalette();
 		},
@@ -229,6 +254,80 @@ export default function Home() {
 			window.removeEventListener("scroll", update, true);
 		};
 	}, [paletteOpenFor]);
+
+	// Slider popover state for per-partition weight control
+	const [sliderOpenFor, setSliderOpenFor] = useState<number | null>(null);
+	const sliderRef = useRef<HTMLDivElement | null>(null);
+	const sliderAnchorRef = useRef<HTMLElement | null>(null);
+
+	// Slider popover: close on outside click / Escape
+	useEffect(() => {
+		if (sliderOpenFor === null) return;
+		const onDocDown = (ev: MouseEvent) => {
+			const tgt = ev.target as Node | null;
+			if (!tgt) return;
+			if (sliderRef.current && sliderRef.current.contains(tgt)) return;
+			if (sliderAnchorRef.current && sliderAnchorRef.current.contains(tgt))
+				return;
+			setSliderOpenFor(null);
+			sliderAnchorRef.current = null;
+		};
+		const onKey = (ev: KeyboardEvent) => {
+			if (ev.key === "Escape") {
+				setSliderOpenFor(null);
+				sliderAnchorRef.current = null;
+			}
+		};
+		document.addEventListener("mousedown", onDocDown);
+		document.addEventListener("keydown", onKey);
+		return () => {
+			document.removeEventListener("mousedown", onDocDown);
+			document.removeEventListener("keydown", onKey);
+		};
+	}, [sliderOpenFor]);
+
+	// Reposition slider popover on scroll/resize when open
+	useEffect(() => {
+		if (sliderOpenFor === null) return;
+		let raf = 0;
+		const update = () => {
+			if (!sliderAnchorRef.current || !sliderRef.current) return;
+			const r = sliderAnchorRef.current.getBoundingClientRect();
+			const pop = sliderRef.current;
+			pop.style.position = "fixed";
+			const popW = pop.offsetWidth || 240;
+			const desiredCenter = Math.round(r.left + r.width / 2);
+			const minCenter = Math.round(popW / 2) + 8;
+			const maxCenter = Math.round(window.innerWidth - popW / 2) - 8;
+			const clampedCenter = Math.max(
+				minCenter,
+				Math.min(maxCenter, desiredCenter)
+			);
+			pop.style.left = `${clampedCenter}px`;
+			pop.style.transform = "translate(-50%, 0)";
+			let top = Math.round(r.bottom + 8);
+			if (top + pop.offsetHeight > window.innerHeight - 8)
+				top = Math.round(r.top - pop.offsetHeight - 8);
+			top = Math.max(
+				8,
+				Math.min(top, Math.max(8, window.innerHeight - pop.offsetHeight - 8))
+			);
+			pop.style.top = `${top}px`;
+			pop.style.opacity = "1";
+		};
+		const tick = () => {
+			update();
+			raf = requestAnimationFrame(tick);
+		};
+		window.addEventListener("resize", update);
+		window.addEventListener("scroll", update, true);
+		tick();
+		return () => {
+			cancelAnimationFrame(raf);
+			window.removeEventListener("resize", update);
+			window.removeEventListener("scroll", update, true);
+		};
+	}, [sliderOpenFor]);
 	const [windowSize, setWindowSize] = useState({ width: 0, height: 0 });
 	const [showConfetti, setShowConfetti] = useState(false);
 	const [nameOrder, setNameOrder] = useState<NameOrder>("shuffle");
@@ -1221,13 +1320,54 @@ export default function Home() {
 	const [partitionImages, setPartitionImages] = useState<
 		Record<number, string>
 	>({});
+	// Legacy index-keyed images remain for fallback, but introduce id-keyed maps
 	const partitionImageBitmapRefs = useRef<Record<number, ImageBitmap | null>>(
 		{}
 	);
+	const [partitionImagesById, setPartitionImagesById] = useState<
+		Record<string, string>
+	>({});
+	const [partitionColorsById, setPartitionColorsById] = useState<
+		Record<string, string>
+	>({});
+
+	// Per-partition weights: legacy index-keyed and id-keyed maps.
+	// Each partition defaults to weight 1 when no explicit weight is set.
+	const [partitionWeights, setPartitionWeights] = useState<
+		Record<number, number>
+	>({});
+	const [partitionWeightsById, setPartitionWeightsById] = useState<
+		Record<string, number>
+	>({});
+
+	// Refs mirroring the weight states for synchronous reads during drag events
+	const partitionWeightsRef = useRef<Record<number, number>>({});
+	const partitionWeightsByIdRef = useRef<Record<string, number>>({});
+
+	// Keep refs in sync with state so we can read current values synchronously
+	useEffect(() => {
+		partitionWeightsRef.current = partitionWeights;
+		partitionWeightsByIdRef.current = partitionWeightsById;
+		// redraw immediately when weights change
+		drawWheelRef.current?.();
+	}, [partitionWeights, partitionWeightsById]);
+
+	// ImageBitmap, blob url and contrast caches keyed by stable entry id
+	const partitionImageBitmapByIdRef = useRef<
+		Record<string, ImageBitmap | null>
+	>({});
+	const partitionImageBlobUrlsByIdRef = useRef<Record<string, string | null>>(
+		{}
+	);
+	const partitionImageContrastByIdRef = useRef<Record<string, string>>({});
 	// Cache simple contrast ("#ffffff" or "#000000") per-partition image to
 	// decide text stroke/shadow color when drawing text over a partition image.
 	const partitionImageContrastRef = useRef<Record<number, string>>({});
 	const partitionImageBlobUrlsRef = useRef<Record<number, string | null>>({});
+	// Stable per-entry ids for renderLines. Kept in state+ref for handlers.
+	const [lineIds, setLineIds] = useState<string[]>([]);
+	const lineIdsRef = useRef<string[]>([]);
+	const idCounterRef = useRef<number>(1);
 
 	// Hidden file input for per-partition image selection
 	const entryFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -1240,15 +1380,36 @@ export default function Home() {
 		if (!f) return;
 		const idx = pendingPartitionIndexForFileRef.current;
 		if (idx == null) return;
-		// revoke previous blob for this index
+		// Do not revoke the previous blob synchronously (it may still be used by
+		// an in-flight loader). Instead queue it for deferred revocation and
+		// clear the bitmap cache for this index so the loader re-decodes the
+		// newly selected image.
 		try {
 			const prev = partitionImageBlobUrlsRef.current[idx];
-			if (prev) URL.revokeObjectURL(prev);
+			if (prev && typeof prev === "string") {
+				if (prev.startsWith && prev.startsWith("blob:")) {
+					pendingBlobRevocationsRef.current.add(prev);
+				}
+			}
 		} catch {}
+		// clear any cached bitmap so loader will reload
+		partitionImageBitmapRefs.current[idx] = null;
 		const url = URL.createObjectURL(f);
-		partitionImageBlobUrlsRef.current[idx] = url;
-		setPartitionImages((prev) => ({ ...prev, [idx]: url }));
+		const id = lineIdsRef.current?.[idx];
+		if (id) {
+			partitionImageBlobUrlsByIdRef.current[id] = url;
+			partitionImageBitmapByIdRef.current[id] = null;
+			setPartitionImagesById((prev) => ({ ...prev, [id]: url }));
+		} else {
+			// fallback to index-keyed behavior
+			partitionImageBlobUrlsRef.current[idx] = url;
+			setPartitionImages((prev) => ({ ...prev, [idx]: url }));
+		}
 		pendingPartitionIndexForFileRef.current = null;
+		// reset the file input so same file can be selected again
+		try {
+			e.currentTarget.value = "";
+		} catch {}
 		// load bitmap will be handled by effect below which watches partitionImages
 	};
 
@@ -1507,7 +1668,14 @@ export default function Home() {
 
 				pendingPartitionIndexRef.current = idx;
 
-				const existing = partitionColors[idx] ?? colors[idx % colors.length];
+				// Prefer id-keyed color when available so the native picker reflects
+				// the user's persisted choice for this logical entry.
+				const id = lineIdsRef.current?.[idx];
+				const existing = id
+					? partitionColorsById[id] ??
+					  partitionColors[idx] ??
+					  colors[idx % colors.length]
+					: partitionColors[idx] ?? colors[idx % colors.length];
 				el.value = existing || "#ffffff";
 
 				if (anchor) {
@@ -1548,7 +1716,7 @@ export default function Home() {
 				console.warn("openColorPickerFor failed:", err);
 			}
 		},
-		[colors, partitionColors]
+		[colors, partitionColors, partitionColorsById]
 	);
 
 	// Color picker is opened via ephemeral native input; no closeColorPicker needed.
@@ -1583,11 +1751,32 @@ export default function Home() {
 		const centerScale = canvas.width >= 768 ? 1.7 : 1;
 
 		// Draw wheel segments
-		const anglePerSegment = (2 * Math.PI) / displayList.length;
+		// Compute per-partition weights (id-keyed first, then index-keyed), default 1
+		const weights = displayList.map((_, i) => {
+			const id = lineIds[i];
+			const w = id
+				? partitionWeightsByIdRef.current[id] ?? partitionWeightsRef.current[i]
+				: partitionWeightsRef.current[i];
+			return Number(w ?? 1);
+		});
 
-		displayList.forEach((name, index) => {
-			const startAngle = index * anglePerSegment + (rotation * Math.PI) / 180;
-			const endAngle = startAngle + anglePerSegment;
+		const totalWeight = Math.max(
+			1,
+			weights.reduce((a, b) => a + b, 0)
+		);
+
+		// Accumulator angle starts at the global rotation
+		let accAngle = (rotation * Math.PI) / 180;
+
+		for (let index = 0; index < displayList.length; index++) {
+			const name = displayList[index];
+			const weight = weights[index] ?? 1;
+			const angle = (weight / totalWeight) * (2 * Math.PI);
+			const startAngle = accAngle;
+			const endAngle = startAngle + angle;
+			const midAngle = startAngle + angle / 2;
+			// advance accumulator for next slice
+			accAngle = endAngle;
 
 			// Build the sector path
 			ctx.beginPath();
@@ -1595,8 +1784,11 @@ export default function Home() {
 			ctx.arc(centerX, centerY, radius, startAngle, endAngle);
 			ctx.closePath();
 
-			// If a per-partition image is present, draw it clipped to this sector (object-scale-down).
-			const pImg = partitionImageBitmapRefs.current[index];
+			// Resolve stable id for this index (if available) and prefer id-keyed images/colors
+			const id = lineIds[index];
+			const pImg = id
+				? partitionImageBitmapByIdRef.current[id]
+				: partitionImageBitmapRefs.current[index];
 			if (pImg) {
 				ctx.save();
 				// Ensure the partition background color is painted under the image
@@ -1607,7 +1799,9 @@ export default function Home() {
 					ctx.arc(centerX, centerY, radius, startAngle, endAngle);
 					ctx.closePath();
 					ctx.fillStyle =
-						partitionColors[index] ?? colors[index % colors.length];
+						(id ? partitionColorsById[id] : undefined) ??
+						partitionColors[index] ??
+						colors[index % colors.length];
 					ctx.fill();
 				} catch (fillErr) {
 					// ignore fill failures
@@ -1616,12 +1810,13 @@ export default function Home() {
 				try {
 					// place image centered along the sector radius (center of the partition)
 					// Always scale-down the image so it fits comfortably inside the wheel
-					const midAngle = startAngle + anglePerSegment / 2;
+					// midAngle computed per-slice for weighted segments
+					// const midAngle already available above
 					const iw = pImg.width;
 					const ih = pImg.height;
 					// Adjust max allowed image size by partition angular size so
 					// larger partitions get proportionally larger images.
-					const angleDeg = (anglePerSegment * 180) / Math.PI;
+					const angleDeg = (angle * 180) / Math.PI;
 					// scale factor: small slices -> 0.7, large slices -> up to 1.4
 					const sizeFactor = Math.min(1.4, Math.max(0.7, angleDeg / 30));
 					const baseMax = radius * 0.4;
@@ -1716,8 +1911,10 @@ export default function Home() {
 				}
 				ctx.restore();
 			} else {
-				// prefer custom partition color when present
-				ctx.fillStyle = partitionColors[index] ?? colors[index % colors.length];
+				// prefer custom partition color when present (id-keyed first)
+				const idColor = id ? partitionColorsById[id] : undefined;
+				ctx.fillStyle =
+					idColor ?? partitionColors[index] ?? colors[index % colors.length];
 				ctx.fill();
 			}
 
@@ -1733,7 +1930,7 @@ export default function Home() {
 			// Draw text with dynamic font size based on partition size and text length
 			ctx.save();
 			ctx.translate(centerX, centerY);
-			ctx.rotate(startAngle + anglePerSegment / 2);
+			ctx.rotate(startAngle + angle / 2);
 			ctx.textAlign = "center";
 			// Determine the final text color for this partition. Use the global
 			// `wheelTextColor` by default, but if a per-partition image exists,
@@ -1742,7 +1939,22 @@ export default function Home() {
 			// ImageBitmap so the text color updates immediately.
 			let finalTextColor =
 				namesList.length === 0 ? "rgba(0, 0, 0, 0.4)" : wheelTextColor;
-			if (partitionImageBitmapRefs.current[index]) {
+			if (id && partitionImageBitmapByIdRef.current[id]) {
+				finalTextColor =
+					partitionImageContrastByIdRef.current[id] || finalTextColor;
+				if (!partitionImageContrastByIdRef.current[id]) {
+					try {
+						finalTextColor =
+							computeContrastFromBitmap(
+								partitionImageBitmapByIdRef.current[id] as ImageBitmap
+							) || finalTextColor;
+						// cache it for subsequent draws
+						partitionImageContrastByIdRef.current[id] = finalTextColor;
+					} catch (e) {
+						// ignore - keep default
+					}
+				}
+			} else if (partitionImageBitmapRefs.current[index]) {
 				finalTextColor =
 					partitionImageContrastRef.current[index] || finalTextColor;
 				if (!partitionImageContrastRef.current[index]) {
@@ -1764,7 +1976,7 @@ export default function Home() {
 			const baseFontSize = Math.max(12, Math.round(radius / 20));
 
 			// Scale by partition size with boost for many names (8+)
-			const angleDegrees = (anglePerSegment * 180) / Math.PI;
+			const angleDegrees = (angle * 180) / Math.PI;
 			// const minScale = namesList.length >= 8 ? 1.8 : 0.9;
 			const minScale = displayList.length >= 8 ? 1.8 : 0.9;
 			const partitionScale = Math.min(
@@ -1804,12 +2016,18 @@ export default function Home() {
 			// legibility against the image.
 			const hasImageUnderText =
 				!!wheelImageBitmapRef.current ||
-				!!partitionImageBitmapRefs.current[index];
+				!!(id
+					? partitionImageBitmapByIdRef.current[id]
+					: partitionImageBitmapRefs.current[index]);
 			if (hasImageUnderText) {
 				// Prefer contrast computed for wheel image; fall back to cached
 				// per-partition contrast if present.
 				const contrastColor = wheelImageBitmapRef.current
 					? wheelTextColor
+					: id
+					? partitionImageContrastByIdRef.current[id] ||
+					  wheelTextColor ||
+					  "#000000"
 					: partitionImageContrastRef.current[index] ||
 					  wheelTextColor ||
 					  "#000000";
@@ -1842,7 +2060,7 @@ export default function Home() {
 				ctx.fillText(displayText, radius * 0.65, fontSize * 0.3);
 			}
 			ctx.restore();
-		});
+		}
 
 		// Add 3D gradient effect to wheel edges
 		const gradient = ctx.createRadialGradient(
@@ -1986,7 +2204,16 @@ export default function Home() {
 		// Slight text offset when pressed
 		const textOffsetY = spinning ? 2 * centerScale : 0;
 		ctx.fillText("SPIN", centerX, centerY + textOffsetY);
-	}, [namesList, rotation, colors, spinning, wheelTextColor, partitionColors]);
+	}, [
+		namesList,
+		rotation,
+		colors,
+		spinning,
+		wheelTextColor,
+		partitionColors,
+		lineIds,
+		partitionColorsById,
+	]);
 
 	// keep a ref to the latest drawWheel so other effects can call it without
 	// adding drawWheel to their dependency arrays (which would cause re-runs).
@@ -2042,31 +2269,56 @@ export default function Home() {
 		};
 	}, [wheelImageSrc]);
 
-	// Load any partition images into ImageBitmaps for faster drawing
+	// Load any partition images into ImageBitmaps for faster drawing (id-keyed)
 	useEffect(() => {
 		let mounted = true;
-		const toLoad: Array<[number, string]> = [];
-		Object.keys(partitionImages).forEach((k) => {
-			const idx = Number(k);
-			const src = partitionImages[idx];
+		const toLoad: Array<[string, string]> = [];
+		const ids = lineIdsRef.current ?? [];
+		ids.forEach((id, idx) => {
+			const src = partitionImagesById[id] ?? partitionImages[idx];
 			if (!src) return;
-			if (!partitionImageBitmapRefs.current[idx]) toLoad.push([idx, src]);
+			if (
+				partitionImageBlobUrlsByIdRef.current[id] !== src ||
+				!partitionImageBitmapByIdRef.current[id]
+			) {
+				toLoad.push([id, src]);
+			}
 		});
 		if (toLoad.length === 0) return;
 		(async () => {
-			for (const [idx, src] of toLoad) {
+			for (const [id, src] of toLoad) {
 				try {
+					// re-check that the requested src is still the active one for this id/index
+					const currentIdx = (lineIdsRef.current ?? []).indexOf(id);
+					const currentSrc =
+						currentIdx >= 0
+							? partitionImagesById[id] ?? partitionImages[currentIdx]
+							: partitionImagesById[id];
+					if (currentSrc !== src) continue;
 					const res = await fetch(src);
 					const blob = await res.blob();
 					const bmp = await createImageBitmap(blob);
 					if (!mounted) break;
-					partitionImageBitmapRefs.current[idx] = bmp;
-					// compute and cache a simple contrast (black/white) for this partition
+					// Another guard: ensure the src hasn't changed while we fetched/decoded
+					const stillSrc =
+						currentIdx >= 0
+							? partitionImagesById[id] ?? partitionImages[currentIdx]
+							: partitionImagesById[id];
+					if (stillSrc !== src) {
+						try {
+							if (src.startsWith && src.startsWith("blob:"))
+								pendingBlobRevocationsRef.current.add(src);
+						} catch {}
+						continue;
+					}
+					partitionImageBitmapByIdRef.current[id] = bmp;
+					// record the blob url as the active one for this id
+					partitionImageBlobUrlsByIdRef.current[id] = src;
 					try {
-						partitionImageContrastRef.current[idx] =
+						partitionImageContrastByIdRef.current[id] =
 							computeContrastFromBitmap(bmp) || "#000000";
 					} catch (err) {
-						partitionImageContrastRef.current[idx] = "#000000";
+						partitionImageContrastByIdRef.current[id] = "#000000";
 					}
 					drawWheelRef.current?.();
 				} catch (err) {
@@ -2077,24 +2329,46 @@ export default function Home() {
 		return () => {
 			mounted = false;
 		};
-	}, [partitionImages]);
+	}, [partitionImagesById, partitionImages, lineIds]);
 
 	const determineWinner = useCallback(
 		(finalRotation: number) => {
 			if (namesList.length === 0) return;
 
-			const anglePerSegment = 360 / namesList.length;
+			// Compute weights (id-keyed first, then index) and find which
+			// partition contains the adjusted rotation angle.
+			const weights = namesList.map((_, i) => {
+				const id = lineIds[i];
+				const w = id
+					? partitionWeightsByIdRef.current[id] ??
+					  partitionWeightsRef.current[i]
+					: partitionWeightsRef.current[i];
+				return Number(w ?? 1);
+			});
+			const totalWeight = Math.max(
+				1,
+				weights.reduce((a, b) => a + b, 0)
+			);
 
-			// The arrow points to the right (0 degrees / 360 degrees)
-			// We need to find which segment is at the right after rotation
+			// The arrow points to the right (0 degrees). Convert finalRotation
+			// into an angle in degrees pointing at the wheel and find the slice.
 			const adjustedRotation = (360 - (finalRotation % 360)) % 360;
-			const winnerIndex =
-				Math.floor(adjustedRotation / anglePerSegment) % namesList.length;
+
+			let acc = 0;
+			let winnerIndex = 0;
+			for (let i = 0; i < namesList.length; i++) {
+				const segDeg = (weights[i] / totalWeight) * 360;
+				if (adjustedRotation >= acc && adjustedRotation < acc + segDeg) {
+					winnerIndex = i;
+					break;
+				}
+				acc += segDeg;
+			}
 
 			setWinner(namesList[winnerIndex]);
 			setShowDialog(true);
 		},
-		[namesList]
+		[namesList, lineIds, partitionWeights, partitionWeightsById]
 	);
 
 	const spinWheel = useCallback(() => {
@@ -2225,11 +2499,33 @@ export default function Home() {
 
 			setRotation(currentRotation % 360);
 
-			// Detect segment change and play sound
-			const anglePerSegment = 360 / namesList.length;
+			// Detect segment change and play sound (use weighted segments)
 			const adjustedRotation = (360 - (currentRotation % 360)) % 360;
-			const currentSegment =
-				Math.floor(adjustedRotation / anglePerSegment) % namesList.length;
+			const weightsForDetect = namesList.map((_, i) => {
+				const id = lineIds[i];
+				const w = id
+					? partitionWeightsByIdRef.current[id] ??
+					  partitionWeightsRef.current[i]
+					: partitionWeightsRef.current[i];
+				return Number(w ?? 1);
+			});
+			const totalWForDetect = Math.max(
+				1,
+				weightsForDetect.reduce((a, b) => a + b, 0)
+			);
+			let accForDetect = 0;
+			let currentSegment = 0;
+			for (let i = 0; i < namesList.length; i++) {
+				const segDeg = (weightsForDetect[i] / totalWForDetect) * 360;
+				if (
+					adjustedRotation >= accForDetect &&
+					adjustedRotation < accForDetect + segDeg
+				) {
+					currentSegment = i;
+					break;
+				}
+				accForDetect += segDeg;
+			}
 
 			if (currentSegment !== lastSegmentRef.current) {
 				lastSegmentRef.current = currentSegment;
@@ -2282,7 +2578,17 @@ export default function Home() {
 		};
 
 		animate();
-	}, [spinning, namesList.length, rotation, determineWinner, timerDuration]);
+	}, [
+		spinning,
+		namesList.length,
+		rotation,
+		determineWinner,
+		timerDuration,
+		lineIds,
+		partitionWeights,
+		partitionWeightsById,
+		namesList,
+	]);
 
 	// Set canvas size to container width (fill parent)
 	useEffect(() => {
@@ -2321,6 +2627,279 @@ export default function Home() {
 		}
 		return names.split("\n");
 	}, [names, hideEmpty, forcedEmpty]);
+
+	// Keep previous renderLines snapshot to perform deterministic remapping
+	const prevRenderLinesRef = useRef<string[] | null>(null);
+	// Queue of blob URLs pending revocation (deferred to avoid races)
+	const pendingBlobRevocationsRef = useRef<Set<string>>(new Set());
+
+	// Initialize prevRenderLinesRef on mount so the first change has a valid
+	// "previous" snapshot to compare against. This prevents the remap from
+	// treating the previous list as empty on the very first mutation.
+	useEffect(() => {
+		if (prevRenderLinesRef.current == null)
+			prevRenderLinesRef.current = renderLines.slice();
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
+
+	// When the list of rendered lines changes, remap index-keyed partitionImages
+	// into the new indices deterministically to avoid duplicating a single
+	// blob URL into multiple destinations (which caused image bleed).
+	useEffect(() => {
+		const prev = prevRenderLinesRef.current ?? [];
+		const next = renderLines;
+		// Build stable per-line ids preserving previous ids when possible.
+		const prevIds = lineIdsRef.current ?? [];
+		const newIds: string[] = Array.from({ length: next.length }).map(() => "");
+		const usedPrevIds = new Set<string>();
+
+		// 1) Reuse id at same index when name unchanged
+		for (let i = 0; i < next.length; i++) {
+			if (prevIds[i] && prev[i] === next[i]) {
+				newIds[i] = prevIds[i];
+				usedPrevIds.add(prevIds[i]);
+			}
+		}
+
+		// 2) Reuse ids by name match (first available)
+		for (let i = 0; i < next.length; i++) {
+			if (newIds[i]) continue;
+			for (let oi = 0; oi < prev.length; oi++) {
+				const pid = prevIds[oi];
+				if (!pid) continue;
+				if (usedPrevIds.has(pid)) continue;
+				if (prev[oi] === next[i]) {
+					newIds[i] = pid;
+					usedPrevIds.add(pid);
+					break;
+				}
+			}
+		}
+
+		// 3) Assign new ids where none matched
+		for (let i = 0; i < next.length; i++) {
+			if (!newIds[i]) {
+				newIds[i] = `line-${idCounterRef.current++}`;
+			}
+		}
+
+		// Commit ids
+		setLineIds(newIds);
+		lineIdsRef.current = newIds;
+		// Snapshot previous index->url map
+		const prevBlobMap = { ...partitionImageBlobUrlsRef.current } as Record<
+			number,
+			string | null
+		>;
+
+		// If nothing to remap, just update snapshot and return
+		if (Object.keys(prevBlobMap).length === 0) {
+			prevRenderLinesRef.current = next.slice();
+			return;
+		}
+
+		const result: Record<number, string> = {};
+		const usedOldIdx = new Set<number>();
+		const usedUrls = new Set<string>();
+
+		const tryAssign = (dest: number, url?: string) => {
+			if (!url) return false;
+			if (usedUrls.has(url)) return false;
+			result[dest] = url;
+			usedUrls.add(url);
+			return true;
+		};
+
+		// 1) Prefer explicit current assignment (user already set partitionImages[dest])
+		for (let dest = 0; dest < next.length; dest++) {
+			const src = partitionImages[dest];
+			if (src && tryAssign(dest, src)) continue;
+		}
+
+		// 2) Match by exact name: if a previous slot with the same name had an image,
+		// assign it to the new destination (first-match). This preserves intent
+		// when entries are reordered but keep the same text.
+		for (let dest = 0; dest < next.length; dest++) {
+			if (result[dest]) continue;
+			for (let oi = 0; oi < prev.length; oi++) {
+				if (usedOldIdx.has(oi)) continue;
+				if ((prev[oi] || "") === (next[dest] || "")) {
+					const url = prevBlobMap[oi];
+					if (url && tryAssign(dest, url)) {
+						usedOldIdx.add(oi);
+						break;
+					}
+				}
+			}
+		}
+
+		// 3) Fallback: preserve order — assign remaining old blobs to earliest
+		// unfilled destinations in index order (stable, deterministic).
+		for (let oi = 0; oi < prev.length; oi++) {
+			if (usedOldIdx.has(oi)) continue;
+			const url = prevBlobMap[oi];
+			if (!url) continue;
+			// find first unassigned dest
+			for (let dest = 0; dest < next.length; dest++) {
+				if (!result[dest]) {
+					if (tryAssign(dest, url)) {
+						usedOldIdx.add(oi);
+						break;
+					}
+				}
+			}
+		}
+
+		// Build new blob & bitmap refs according to result map
+		const newBlobMap: Record<number, string | null> = {};
+		const newBitmapMap: Record<number, ImageBitmap | null> = {};
+		// Build url -> bitmap snapshot for reuse (include both legacy index
+		// keyed caches and new id-keyed caches so we don't lose decoded bitmaps)
+		const urlToBitmap = new Map<string, ImageBitmap | null>();
+		Object.keys(partitionImageBlobUrlsRef.current).forEach((k) => {
+			const i = Number(k);
+			const u = partitionImageBlobUrlsRef.current[i];
+			if (u && partitionImageBitmapRefs.current[i]) {
+				urlToBitmap.set(u, partitionImageBitmapRefs.current[i]);
+			}
+		});
+		Object.keys(partitionImageBlobUrlsByIdRef.current).forEach((k) => {
+			const id = k;
+			const u = partitionImageBlobUrlsByIdRef.current[id];
+			if (u && partitionImageBitmapByIdRef.current[id]) {
+				urlToBitmap.set(u, partitionImageBitmapByIdRef.current[id]);
+			}
+		});
+
+		Object.keys(result).forEach((k) => {
+			const dest = Number(k);
+			const u = result[dest];
+			if (u) {
+				newBlobMap[dest] = u;
+				newBitmapMap[dest] = urlToBitmap.has(u)
+					? urlToBitmap.get(u) || null
+					: null;
+			}
+		});
+
+		// Queue orphaned blob urls for deferred revocation
+		try {
+			const prevUrls = Object.values(partitionImageBlobUrlsRef.current).filter(
+				Boolean
+			) as string[];
+			const newUrls = Object.values(newBlobMap).filter(Boolean) as string[];
+			for (const u of prevUrls) {
+				if (!u) continue;
+				if (!newUrls.includes(u) && u.startsWith && u.startsWith("blob:")) {
+					pendingBlobRevocationsRef.current.add(u);
+				}
+			}
+			// schedule cleanup
+			setTimeout(() => {
+				try {
+					const currentUrls = Object.values(
+						partitionImageBlobUrlsRef.current
+					).filter(Boolean) as string[];
+					const activeImagesIndex = Object.values(partitionImages).filter(
+						Boolean
+					) as string[];
+					const activeImagesById = Object.values(partitionImagesById).filter(
+						Boolean
+					) as string[];
+					const activeImages = [...activeImagesIndex, ...activeImagesById];
+					for (const u of Array.from(pendingBlobRevocationsRef.current)) {
+						if (!u) continue;
+						if (currentUrls.includes(u) || activeImages.includes(u)) continue;
+						try {
+							URL.revokeObjectURL(u);
+						} catch {}
+						pendingBlobRevocationsRef.current.delete(u);
+					}
+				} catch {}
+			}, 250);
+		} catch {}
+
+		// Apply remapped state (index->url maps) AND convert to id-keyed maps
+		// Build id-keyed blob/url & bitmap maps using the newIds we generated above
+		const newBlobById: Record<string, string | null> = {};
+		const newBitmapById: Record<string, ImageBitmap | null> = {};
+		Object.keys(newBlobMap).forEach((k) => {
+			const dest = Number(k);
+			const id = newIds[dest];
+			if (id && newBlobMap[dest]) {
+				newBlobById[id] = newBlobMap[dest];
+				if (newBitmapMap[dest]) newBitmapById[id] = newBitmapMap[dest];
+			}
+		});
+
+		// Keep legacy index-keyed maps for fallback
+		partitionImageBlobUrlsRef.current = newBlobMap;
+		partitionImageBitmapRefs.current = newBitmapMap;
+		setPartitionImages((_) => {
+			const out: Record<number, string> = {};
+			Object.keys(newBlobMap).forEach((k) => {
+				const i = Number(k);
+				if (newBlobMap[i]) out[i] = newBlobMap[i] as string;
+			});
+			return out;
+		});
+
+		// Set id-keyed refs/state so draw/loader will use ids
+		partitionImageBlobUrlsByIdRef.current = newBlobById;
+		partitionImageBitmapByIdRef.current = newBitmapById;
+		setPartitionImagesById((prev) => {
+			const out = { ...prev };
+			Object.keys(newBlobById).forEach((id) => {
+				if (newBlobById[id]) out[id] = newBlobById[id] as string;
+			});
+			return out;
+		});
+
+		// Remap per-partition colors to id-keyed map so user-chosen colors stick
+		try {
+			const prevColorMap = { ...partitionColors } as Record<number, string>;
+			const newColorById: Record<string, string> = {};
+			const tryAssignColorToId = (dest: number, col?: string) => {
+				if (!col) return false;
+				const id = newIds[dest];
+				if (!id) return false;
+				if (Object.values(newColorById).includes(col)) return false;
+				newColorById[id] = col;
+				return true;
+			};
+			// 1) Prefer explicit current assignment
+			for (let dest = 0; dest < next.length; dest++) {
+				const src = partitionColors[dest];
+				if (src && tryAssignColorToId(dest, src)) continue;
+			}
+			// 2) Match by previous name
+			for (let dest = 0; dest < next.length; dest++) {
+				if (newColorById[newIds[dest]]) continue;
+				for (let oi = 0; oi < prev.length; oi++) {
+					if ((prev[oi] || "") === (next[dest] || "")) {
+						const c = prevColorMap[oi];
+						if (c && tryAssignColorToId(dest, c)) break;
+					}
+				}
+			}
+			// 3) Fallback: preserve order
+			for (let oi = 0; oi < prev.length; oi++) {
+				const c = prevColorMap[oi];
+				if (!c) continue;
+				for (let dest = 0; dest < next.length; dest++) {
+					if (!newColorById[newIds[dest]]) {
+						if (tryAssignColorToId(dest, c)) break;
+					}
+				}
+			}
+			// Apply
+			setPartitionColorsById((prev) => ({ ...prev, ...newColorById }));
+		} catch (_) {
+			// best-effort
+		}
+
+		prevRenderLinesRef.current = next.slice();
+	}, [renderLines]);
 
 	// If we start with an empty list, focus the first input line automatically.
 	useEffect(() => {
@@ -2368,6 +2947,20 @@ export default function Home() {
 		}
 		return false;
 	};
+
+	// Compute per-partition weights for rendering percentages (default 1)
+	const getWeightForIndex = (i: number) => {
+		const id = lineIds[i];
+		const w = id
+			? partitionWeightsByIdRef.current[id] ?? partitionWeightsRef.current[i]
+			: partitionWeightsRef.current[i];
+		return Number(w ?? 1);
+	};
+
+	const totalWeightForRender = Math.max(
+		1,
+		renderLines.reduce((acc, _ln, i) => acc + getWeightForIndex(i), 0)
+	);
 
 	return (
 		<div className="min-h-screen">
@@ -2540,7 +3133,17 @@ export default function Home() {
 					const val = e.currentTarget.value;
 					const idx = pendingPartitionIndexRef.current;
 					if (idx != null) {
-						setPartitionColors((prev) => ({ ...prev, [idx]: val }));
+						const id = lineIdsRef.current?.[idx];
+						if (id) {
+							setPartitionColorsById((prev) => ({ ...prev, [id]: val }));
+							setPartitionColors((prev) => {
+								const copy = { ...prev };
+								delete copy[idx];
+								return copy;
+							});
+						} else {
+							setPartitionColors((prev) => ({ ...prev, [idx]: val }));
+						}
 						drawWheelRef.current?.();
 						pendingPartitionIndexRef.current = null;
 					}
@@ -2748,6 +3351,93 @@ export default function Home() {
 										</p>
 									</div>
 								</div>
+							</div>
+						)}
+						{/* Slider popover for per-partition weight (Share %) */}
+						{sliderOpenFor !== null && (
+							<div
+								ref={sliderRef}
+								className="z-50 p-3 bg-white rounded shadow-lg border"
+								style={{
+									position: "fixed",
+									left: "50%",
+									top: "50%",
+									transform: "translate(-50%, 0)",
+								}}
+							>
+								{(() => {
+									const idx = sliderOpenFor as number;
+									const id = lineIdsRef.current?.[idx];
+									const current = id
+										? partitionWeightsByIdRef.current[id] ??
+										  partitionWeightsRef.current[idx] ??
+										  1
+										: partitionWeightsRef.current[idx] ?? 1;
+									return (
+										<div className="w-[260px]">
+											<div className="text-sm font-medium mb-2">
+												Adjust weight (0–500)
+											</div>
+											<input
+												type="range"
+												min={0}
+												max={500}
+												value={current}
+												onChange={(e) => {
+													const val = Number(
+														(e.target as HTMLInputElement).value || 0
+													);
+													if (id) {
+														// update refs synchronously so draw uses latest value
+														partitionWeightsByIdRef.current = {
+															...partitionWeightsByIdRef.current,
+															[id]: val,
+														};
+														setPartitionWeightsById((prev) => ({
+															...prev,
+															[id]: val,
+														}));
+														// remove any legacy index-keyed value
+														partitionWeightsRef.current = {
+															...partitionWeightsRef.current,
+														};
+														delete partitionWeightsRef.current[idx];
+														setPartitionWeights((prev) => {
+															const copy = { ...prev };
+															delete copy[idx];
+															return copy;
+														});
+													} else {
+														partitionWeightsRef.current = {
+															...partitionWeightsRef.current,
+															[idx]: val,
+														};
+														setPartitionWeights((prev) => ({
+															...prev,
+															[idx]: val,
+														}));
+													}
+													// draw immediately using refs
+													drawWheelRef.current?.();
+												}}
+												className="w-full"
+											/>
+											<div className="mt-2 text-sm">Value: {current}</div>
+											<div className="mt-3 flex justify-end">
+												<button
+													type="button"
+													className="px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 text-sm"
+													onClick={() => {
+														setSliderOpenFor(null);
+														sliderAnchorRef.current = null;
+													}}
+												>
+													Done
+												</button>
+											</div>
+										</div>
+									);
+								})()}
 							</div>
 						)}
 					</section>
@@ -3180,11 +3870,19 @@ export default function Home() {
 												const isIncluded = (text || "").trim()
 													? includeMap[(text || "").trim()] !== false
 													: false;
-												// Palette button color: per-partition override or default palette
-												const paletteBtnColor =
-													partitionColors[idx] ?? colors[idx % colors.length];
+												// Palette button color: prefer id-keyed per-partition override
+												const pid = lineIdsRef.current?.[idx];
+												const paletteBtnColor = pid
+													? partitionColorsById[pid] ??
+													  partitionColors[idx] ??
+													  colors[idx % colors.length]
+													: partitionColors[idx] ?? colors[idx % colors.length];
 												const paletteBtnTextColor =
 													computeContrastFromColor(paletteBtnColor);
+												const weight = getWeightForIndex(idx);
+												const percent = Math.round(
+													(weight / totalWeightForRender) * 100
+												);
 												return (
 													<div
 														key={`adv-line-${idx}`}
@@ -3282,7 +3980,7 @@ export default function Home() {
 															</div>
 														</div>
 														{/* Second inner div: palette button */}
-														<div className="flex gap-2">
+														<div className="flex gap-3 flex-wrap">
 															<button
 																type="button"
 																className="flex items-center gap-2 px-3 py-1 rounded shadow"
@@ -3306,7 +4004,7 @@ export default function Home() {
 																	size={16}
 																	color={paletteBtnTextColor}
 																/>
-																<span className="text-xs">Color</span>
+																{/* <span className="text-xs">Color</span> */}
 															</button>
 
 															<button
@@ -3322,8 +4020,29 @@ export default function Home() {
 																	text || ""
 																).trim()}`}
 															>
-																<ImageIcon size={16} className="" />
-																<span className="text-xs">Image</span>
+																<UploadCloud size={16} />
+																{/* <span className="text-xs">Image</span> */}
+															</button>
+
+															{/* Share button: same style as Image button, placed to the right */}
+															<button
+																type="button"
+																className="flex items-center gap-2 px-3 py-1 rounded shadow bg-blue-200"
+																onClick={(e) => {
+																	e.preventDefault();
+																	e.stopPropagation();
+																	// Open weight slider popover anchored to this button
+																	sliderAnchorRef.current =
+																		e.currentTarget as HTMLElement;
+																	setSliderOpenFor(idx);
+																}}
+																aria-label={`Share ${(text || "").trim()}`}
+															>
+																<span className="text-sm font-semibold">
+																	{percent}%
+																</span>
+																<Percent size={16} />
+																<span className="text-xs">Win</span>
 															</button>
 														</div>
 													</div>
