@@ -4437,24 +4437,27 @@ export default function Home() {
 					<ol className="list-decimal list-inside ml-4 space-y-2 text-slate-700">
 						<li>
 							Enter entries (one per line) in the names area. Use the
-							check/clear controls to manage individual lines.
+							check/clear controls to manage individual lines. Toggle Advanced
+							mode for per-entry controls (color, image, weight, reorder).
 						</li>
 						<li>
-							Pick a timer from the Timers menu (2–40s). The app uses sensible
-							accel and decel phases so longer timers feel smoother.
+							Adjust weights to change winning odds: open the weight popover to
+							set values (0–200) and see the calculated percentage for each
+							entry.
 						</li>
 						<li>
-							Customize the stage: choose backgrounds, spin and winner sounds to
-							match your event.
+							Customize the stage: choose a full-screen background or a wheel
+							image, and pick or upload spin/winner sounds to match your event.
 						</li>
 						<li>
-							Click or tap the wheel to spin. The wheel will accelerate, cruise
-							and slow naturally until the winner is revealed. You can replay as
-							needed.
+							Reorder entries by dragging the grip handle (Advanced mode) to
+							change the visual order while preserving images, colors and
+							weights.
 						</li>
 						<li>
-							When the wheel stops, the winner dialog appears with options to
-							copy or export the result.
+							Click or tap the wheel to spin. The wheel accelerates, cruises and
+							slows naturally until a winner is revealed. Use the dialog to copy
+							or export results.
 						</li>
 					</ol>
 				</section>

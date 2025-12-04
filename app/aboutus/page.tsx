@@ -55,31 +55,38 @@ export default function AboutUsPage() {
 							What We Offer
 						</h2>
 						<p>
-							SpinWheelQuiz provides a collection of features tailored for spin
-							wheel experiences:
+							SpinWheelQuiz provides a growing set of features to make event
+							spinning flexible, fair and visually engaging:
 						</p>
 						<ul className="list-disc list-inside space-y-2 ml-4">
 							<li>
-								<strong>Custom backgrounds:</strong> Select one or more
-								full-screen background images to set the stage for your wheel
-								(choose multiple images to rotate or preview backgrounds before
-								spinning).
+								<strong>Custom backgrounds:</strong> Choose a full-screen page
+								background or a dedicated wheel background image so the stage
+								matches your event.
 							</li>
 							<li>
-								<strong>Sound Effects:</strong> Choose spin and winning sounds
-								from the library or upload your own.
+								<strong>Per-entry customization:</strong> Assign a custom color
+								or upload an image per participant so each slice can carry a
+								unique look.
 							</li>
 							<li>
-								<strong>Timer & Auto-Spin:</strong> Configure countdowns and
-								automated spins for events.
+								<strong>Adjustable weights & percentages:</strong> Give entries
+								different chances by editing their weight (0–200). The UI shows
+								the corresponding percentage share so odds are clear.
 							</li>
 							<li>
-								<strong>Winner Selection:</strong> Fair random selection with
-								options to highlight or save winners.
+								<strong>Drag to reorder:</strong> Reposition entries using the
+								drag handle in Advanced mode to change visual ordering without
+								losing assigned images or colors.
 							</li>
 							<li>
-								<strong>Share & Export:</strong> Share your wheel or export
-								results for record-keeping.
+								<strong>Sound & timing:</strong> Pick spin and winning sounds
+								from the library or upload your own, and configure timers and
+								spin behavior for a polished reveal.
+							</li>
+							<li>
+								<strong>Share & Export:</strong> Share your wheel link or export
+								results for record-keeping and replay.
 							</li>
 						</ul>
 
