@@ -1,4 +1,9 @@
 import Link from "next/link";
+import localFont from "next/font/local";
+const adalima = localFont({
+	src: "../_fonts/adalima.ttf",
+	variable: "--font-adalima",
+});
 
 export default function Footer() {
 	const year = new Date().getFullYear();
@@ -9,7 +14,12 @@ export default function Footer() {
 				<div className="grid md:flex md:justify-around  gap-8 mb-8">
 					{/* Brand Section */}
 					<div className="md:max-w-[60%]">
-						<h3 className="text-2xl font-bold text-white mb-2">
+						{/* <h3 className="text-2xl font-bold text-white mb-2">
+							SpinWheelQuiz
+						</h3> */}
+						<h3
+							className={`text-xl tracking-wide  font-medium text-slate-50 mb-4 ${adalima.className}`}
+						>
 							SpinWheelQuiz
 						</h3>
 						<p className="text-slate-200 font-medium mb-1">
@@ -27,9 +37,11 @@ export default function Footer() {
 
 					{/* Quick Links Section */}
 					<div className="">
-						<h4 className="text-lg font-semibold text-white mb-4">
+						<h3
+							className={`text-xl tracking-wide  font-medium text-slate-50 mb-4 ${adalima.className}`}
+						>
 							Quick Links
-						</h4>
+						</h3>
 						<div className="flex flex-col gap-2 hover:shadow-none hover:bg-transparent hover:translate-y-0">
 							<Link
 								href="/aboutus"

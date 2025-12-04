@@ -1,5 +1,11 @@
 import type { Metadata } from "next";
 import NavbarBanner from "../_components/navbar-banner";
+import localFont from "next/font/local";
+
+const adalima = localFont({
+	src: "../_fonts/adalima.ttf",
+	variable: "--font-adalima",
+});
 
 export const metadata: Metadata = {
 	title: "About SpinWheelQuiz — About Us",
@@ -29,7 +35,9 @@ export default function AboutUsPage() {
 			<NavbarBanner />
 			<div className="min-h-screen py-12 px-4">
 				<div className="container mx-auto max-w-4xl">
-					<h1 className="text-3xl font-bold text-slate-800 mb-6">
+					<h1
+						className={`text-3xl font-bold text-slate-600  tracking-wider mb-6 ${adalima.className}`}
+					>
 						About SpinWheelQuiz
 					</h1>
 
@@ -41,7 +49,9 @@ export default function AboutUsPage() {
 							just for fun.
 						</p>
 
-						<h2 className="text-2xl font-semibold text-slate-800 mt-8">
+						<h2
+							className={`text-2xl tracking-wide font-medium text-slate-600 mb-4 ${adalima.className}`}
+						>
 							Our Mission
 						</h2>
 						<p>
@@ -51,7 +61,9 @@ export default function AboutUsPage() {
 							anyone can run an engaging spin experience.
 						</p>
 
-						<h2 className="text-2xl font-semibold text-slate-800 mt-8">
+						<h2
+							className={`text-2xl tracking-wide font-medium text-slate-600 mb-4 ${adalima.className}`}
+						>
 							What We Offer
 						</h2>
 						<p>
@@ -90,7 +102,9 @@ export default function AboutUsPage() {
 							</li>
 						</ul>
 
-						<h2 className="text-2xl font-semibold text-slate-800 mt-8">
+						<h2
+							className={`text-2xl tracking-wide font-medium text-slate-600 mb-4 ${adalima.className}`}
+						>
 							Why Choose SpinWheelQuiz?
 						</h2>
 						<ul className="list-disc list-inside space-y-2 ml-4">
@@ -112,7 +126,9 @@ export default function AboutUsPage() {
 							</li>
 						</ul>
 
-						<h2 className="text-2xl font-semibold text-slate-800 mt-8">
+						<h2
+							className={`text-2xl tracking-wide font-medium text-slate-600 mb-4 ${adalima.className}`}
+						>
 							Our Commitment
 						</h2>
 						<p>

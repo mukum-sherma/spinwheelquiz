@@ -613,8 +613,11 @@ const Navbar = ({
 							height={50}
 							className="object-contain"
 						/>
-						<span
+						{/* <span
 							className={`uppercase font-medium ${adalima.className} mt-1 text-[20px] tracking-widest text-shadow-[0_0px_1px_rgba(255,255,255,0.4)]`}
+						> */}
+						<span
+							className={`font-medium ${adalima.className} mt-1 text-[24px] tracking-wide text-shadow-[0_0px_1px_rgba(255,255,255,0.4)]`}
 						>
 							<h1>SpinWheelQuiz</h1>
 						</span>
@@ -845,7 +848,7 @@ const Navbar = ({
 																<p className="text-muted-foreground text-xs uppercase tracking-wide mb-3">
 																	Choose background
 																</p>
-																<div >
+																<div>
 																	<input
 																		ref={uploadBgInputRef}
 																		type="file"

@@ -24,7 +24,7 @@ const NavbarBanner = () => {
 							className="object-contain"
 						/>
 						<span
-							className={`uppercase font-medium ${adalima.className} mt-1 text-[20px] tracking-widest text-shadow-[0_0px_1px_rgba(255,255,255,0.4)]`}
+							className={`font-medium ${adalima.className} mt-1 text-[24px] tracking-wide text-shadow-[0_0px_1px_rgba(255,255,255,0.4)]`}
 						>
 							SpinWheelQuiz
 						</span>

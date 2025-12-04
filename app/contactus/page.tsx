@@ -2,6 +2,12 @@
 
 import { useState } from "react";
 import NavbarBanner from "../_components/navbar-banner";
+import localFont from "next/font/local";
+
+const adalima = localFont({
+	src: "../_fonts/adalima.ttf",
+	variable: "--font-adalima",
+});
 
 export default function ContactUsPage() {
 	const [formData, setFormData] = useState({
@@ -68,7 +74,11 @@ export default function ContactUsPage() {
 			<NavbarBanner />
 			<div className="min-h-screen py-12 px-4">
 				<div className="container mx-auto max-w-2xl">
-					<h1 className="text-3xl font-bold text-slate-800 mb-4">Contact Us</h1>
+					<h1
+						className={`text-3xl font-bold text-slate-600  tracking-wide mb-4 ${adalima.className}`}
+					>
+						Contact Us
+					</h1>
 					<p className="text-slate-600 mb-8">
 						Have a question about SpinWheelQuiz, need help with a wheel, or want
 						to suggest a feature? Fill out the form below and we&apos;ll get

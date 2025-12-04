@@ -59,6 +59,10 @@ const magazine = localFont({
 	src: "./_fonts/magazine.ttf",
 	variable: "--font-magazine",
 });
+const adalima = localFont({
+	src: "./_fonts/adalima.ttf",
+	variable: "--font-adalima",
+});
 
 type NameOrder = "shuffle" | "ascending" | "descending";
 type BackgroundChange =
@@ -4409,7 +4413,9 @@ export default function Home() {
 			<div className="bg-[#fee4c1]">
 				{/* Informational sections: history, description and quick guide placed above footer for SEO */}
 				<section className="container mx-auto max-w-4xl py-10 px-4">
-					<h2 className="text-2xl font-bold text-slate-800 mb-4">
+					<h2
+						className={`text-2xl tracking-wide  font-medium text-slate-600 mb-4 ${adalima.className}`}
+					>
 						About the Spin Wheel
 					</h2>
 					<p className="text-slate-700 leading-relaxed mb-4">
@@ -4421,8 +4427,10 @@ export default function Home() {
 						giveaways — combining fairness with the thrill of a live reveal.
 					</p>
 
-					<h3 className="text-xl font-semibold text-slate-800 mb-3">
-						Why use SpinWheelQuiz?
+					<h3
+						className={`text-xl tracking-wide  font-medium text-slate-600 mb-4 ${adalima.className}`}
+					>
+						Why use SpinWheelQuiz ?
 					</h3>
 					<p className="text-slate-700 leading-relaxed mb-6">
 						SpinWheelQuiz is an online spin wheel generator optimized for fast
@@ -4431,7 +4439,9 @@ export default function Home() {
 						with a polished presentation that keeps audiences engaged.
 					</p>
 
-					<h3 className="text-xl font-semibold text-slate-800 mb-3">
+					<h3
+						className={`text-xl tracking-wide  font-medium text-slate-600 mb-4 ${adalima.className}`}
+					>
 						Quick Guide — How to Play
 					</h3>
 					<ol className="list-decimal list-inside ml-4 space-y-2 text-slate-700">
