@@ -4243,28 +4243,99 @@ export default function Home() {
 																	{/* <span className="text-xs">Color</span> */}
 																</button>
 
-																<button
-																	type="button"
-																	className="relative overflow-hidden flex items-center gap-2 px-3 py-1 rounded shadow bg-blue-200"
-																	onClick={(e) => {
-																		e.preventDefault();
-																		e.stopPropagation();
-																		pendingPartitionIndexForFileRef.current = idx;
-																		entryFileInputRef.current?.click();
-																	}}
-																	aria-label={`Select image for ${(text || "").trim()}`}
-																>
+																<div className="flex ">
+																	<button
+																		type="button"
+																		className="relative overflow-hidden flex items-center gap-2 px-3 py-1 rounded shadow bg-blue-200"
+																		onClick={(e) => {
+																			e.preventDefault();
+																			e.stopPropagation();
+																			pendingPartitionIndexForFileRef.current =
+																				idx;
+																			entryFileInputRef.current?.click();
+																		}}
+																		aria-label={`Select image for ${(
+																			text || ""
+																		).trim()}`}
+																	>
+																		{(() => {
+																			const id = lineIdsRef.current?.[idx];
+																			const src = id
+																				? partitionImagesById[id] ??
+																				  partitionImages[idx]
+																				: partitionImages[idx];
+																			if (src) {
+																				return (
+																					<>
+																						<Image
+																							src={src}
+																							alt="thumb"
+																							fill
+																							className="object-cover rounded"
+																						/>
+																						{/* invisible placeholder to keep button inline dimensions equal to icon case */}
+																						<span
+																							className="w-4 h-4 inline-block"
+																							aria-hidden="true"
+																						/>
+																					</>
+																				);
+																			}
+																			return <ImageIcon size={16} />;
+																		})()}
+																	</button>
+																	{/* Delete button for advanced-mode: appears when a partition image exists */}
 																	{(() => {
-																		const id = lineIdsRef.current?.[idx];
-																		const src = id ? partitionImagesById[id] ?? partitionImages[idx] : partitionImages[idx];
-																		if (src) {
-																			return (
-																				<Image src={src} alt="thumb" fill className="object-cover" />
-																			);
-																		}
-																		return <ImageIcon size={16} />;
+																		const id2 = lineIdsRef.current?.[idx];
+																		const src2 = id2
+																			? partitionImagesById[id2] ??
+																			  partitionImages[idx]
+																			: partitionImages[idx];
+																		if (!src2) return null;
+																		return (
+																			<button
+																				type="button"
+																				className="p-1 rounded-full scale-80 bg-gray-50 border border-gray-200 text-red-600 shadow z-10"
+																				onClick={(ev) => {
+																					ev.stopPropagation();
+																					ev.preventDefault();
+																					const idLocal =
+																						lineIdsRef.current?.[idx];
+																					if (idLocal) {
+																						partitionImageBlobUrlsByIdRef.current[
+																							idLocal
+																						] = null;
+																						partitionImageBitmapByIdRef.current[
+																							idLocal
+																						] = null;
+																						setPartitionImagesById((prev) => {
+																							const copy = { ...prev };
+																							delete copy[idLocal];
+																							return copy;
+																						});
+																					}
+																					partitionImageBlobUrlsRef.current[
+																						idx
+																					] = null;
+																					partitionImageBitmapRefs.current[
+																						idx
+																					] = null;
+																					setPartitionImages((prev) => {
+																						const copy = { ...prev };
+																						delete copy[idx];
+																						return copy;
+																					});
+																					drawWheelRef.current?.();
+																				}}
+																				aria-label={`Remove image for ${(
+																					text || ""
+																				).trim()}`}
+																			>
+																				<X size={14} />
+																			</button>
+																		);
 																	})()}
-																</button>
+																</div>
 															</div>
 
 															{/* Share button: same style as Image button, placed to the right */}
